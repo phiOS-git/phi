@@ -46,6 +46,9 @@ func Run(args []string, stdout, stderr io.Writer, styled bool) int {
 		fmt.Fprint(stdout, view.ZshCompletion())
 		return 0
 
+	case "theme":
+		return runTheme(args[1:], stdout, stderr)
+
 	default:
 		return runFallback(args, stdout, stderr)
 	}
