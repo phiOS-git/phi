@@ -46,6 +46,10 @@ func Run(args []string, stdout, stderr io.Writer, styled bool) int {
 		fmt.Fprint(stdout, view.ZshCompletion())
 		return 0
 
+	case "man":
+		fmt.Fprint(stdout, view.Man(build.Version))
+		return 0
+
 	case "theme":
 		return runTheme(args[1:], stdout, stderr)
 
