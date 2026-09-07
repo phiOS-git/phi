@@ -52,6 +52,9 @@ func Run(args []string, stdout, stderr io.Writer, styled bool) int {
 	case "state":
 		return runState(args[1:], stdout, stderr)
 
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr)
+
 	default:
 		return runFallback(args, stdout, stderr)
 	}

@@ -36,6 +36,7 @@ func Help(styled bool, version string) string {
 	b.WriteString("  completion zsh    print a zsh completion script\n")
 	b.WriteString("  theme             render, set, preview, list and check design tokens\n")
 	b.WriteString("  state             get, set and list runtime state ($XDG_STATE_HOME/phi)\n")
+	b.WriteString("  doctor            disk, systemd, dotfiles drift, SMART, services, packages\n")
 	b.WriteString("  --version         print the version\n\n")
 	b.WriteString("A command not listed above is looked up as phi-<command> on PATH.\n")
 
@@ -55,6 +56,7 @@ _phi() {
     'completion:print a shell completion script'
     'theme:render, set, preview, list and check design tokens'
     'state:get, set and list runtime state'
+    'doctor:composed machine-shape checks'
   )
   _describe 'command' commands
 }
