@@ -56,7 +56,7 @@ func smartStatus(ctx context.Context) Check {
 	}
 
 	var lines []string
-	status := OK
+	sawPass, sawFail := false, false
 	for _, dev := range devices {
 		out, avail, err := run(ctx, "smartctl", "-H", "/dev/"+dev)
 		if !avail {
@@ -65,8 +65,10 @@ func smartStatus(ctx context.Context) Check {
 		verdict, pass, found := assessmentVerdict(out)
 		switch {
 		case found:
-			if !pass {
-				status = Problem
+			if pass {
+				sawPass = true
+			} else {
+				sawFail = true
 			}
 		case err != nil:
 			detail := lastNonEmptyLine(out)
@@ -78,6 +80,23 @@ func smartStatus(ctx context.Context) Check {
 			verdict = "could not parse smartctl output: " + lastNonEmptyLine(out)
 		}
 		lines = append(lines, fmt.Sprintf("/dev/%s: %s", dev, verdict))
+	}
+
+	// A device that could not be read is visible in its own detail line
+	// above, never hidden — but it must not silently promote the check's
+	// own status to "ok": that word means at least one drive's health was
+	// actually confirmed, not merely "nothing confirmed failed". A real
+	// FAILED always wins; short of that, this is ok only once something
+	// was actually verified PASSED, and unknown otherwise (real-hardware
+	// review on mini: every device unreadable — one denied permission,
+	// one an unsupported USB-bridge device smartctl couldn't open — which
+	// the first version of this function still reported as "ok").
+	status := Unknown
+	switch {
+	case sawFail:
+		status = Problem
+	case sawPass:
+		status = OK
 	}
 	return Check{Name: name, Status: status, Detail: strings.Join(lines, "\n")}
 }

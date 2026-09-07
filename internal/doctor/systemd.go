@@ -15,11 +15,20 @@ import (
 func failedUnits(ctx context.Context) Check {
 	const name = "failed systemd units"
 
-	sysOut, avail, _ := run(ctx, "systemctl", "--failed", "--plain", "--no-legend")
+	sysOut, avail, sysErr := run(ctx, "systemctl", "--failed", "--plain", "--no-legend")
 	if !avail {
 		return Check{Name: name, Status: Unknown, Detail: "systemctl not available"}
 	}
-	usrOut, _, _ := run(ctx, "systemctl", "--user", "--failed", "--plain", "--no-legend")
+	// systemctl --failed exits 0 whether or not it lists anything; a non-zero
+	// exit means the query itself did not work (bus unreachable, systemd not
+	// running), and that output is prose ("Failed to connect to bus: ..."),
+	// not a unit list — feeding it through firstField would misread that
+	// prose as a bogus failed-unit name, so this is reported as Unknown
+	// instead of silently read as "system scope: none failed".
+	if sysErr != nil {
+		return Check{Name: name, Status: Unknown, Detail: "systemctl --failed: " + lastNonEmptyLine(sysOut)}
+	}
+	usrOut, _, usrErr := run(ctx, "systemctl", "--user", "--failed", "--plain", "--no-legend")
 
 	var failed []string
 	for _, line := range strings.Split(sysOut, "\n") {
@@ -27,16 +36,25 @@ func failedUnits(ctx context.Context) Check {
 			failed = append(failed, f+" (system)")
 		}
 	}
-	for _, line := range strings.Split(usrOut, "\n") {
-		if f := firstField(line); f != "" {
-			failed = append(failed, f+" (user)")
+	userChecked := usrErr == nil
+	if userChecked {
+		for _, line := range strings.Split(usrOut, "\n") {
+			if f := firstField(line); f != "" {
+				failed = append(failed, f+" (user)")
+			}
 		}
 	}
 
-	if len(failed) == 0 {
-		return Check{Name: name, Status: OK, Detail: "none"}
+	if len(failed) > 0 {
+		return Check{Name: name, Status: Problem, Detail: strings.Join(failed, ", ")}
 	}
-	return Check{Name: name, Status: Problem, Detail: strings.Join(failed, ", ")}
+	if !userChecked {
+		// A missing user session bus (common headless/SSH-only, e.g. mini)
+		// means the user scope was never actually queried — "none" would
+		// claim more than was checked, so that gap is named instead.
+		return Check{Name: name, Status: OK, Detail: fmt.Sprintf("none (system scope only — user scope could not be queried: %s)", lastNonEmptyLine(usrOut))}
+	}
+	return Check{Name: name, Status: OK, Detail: "none"}
 }
 
 func firstField(line string) string {

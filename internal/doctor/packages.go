@@ -25,13 +25,24 @@ var phiPackageName = regexp.MustCompile(`^phi(-.+)?$`)
 func packageCategories(ctx context.Context) Check {
 	const name = "package categories"
 
-	foreignOut, avail, _ := run(ctx, "pacman", "-Qm")
+	foreignOut, avail, foreignErr := run(ctx, "pacman", "-Qm")
 	if !avail {
 		return Check{Name: name, Status: Unknown, Detail: "pacman not available"}
 	}
+	// pacman -Q's filters exit 1 with empty output for "nothing matched" —
+	// the normal, expected case here (no foreign packages). A real failure
+	// (corrupt db, unreadable config) still exits non-zero but prints
+	// something; only that combination is treated as an error, so a clean
+	// "zero foreign packages" is never confused with "could not check."
+	if foreignErr != nil && strings.TrimSpace(foreignOut) != "" {
+		return Check{Name: name, Status: Unknown, Detail: "pacman -Qm: " + lastNonEmptyLine(foreignOut)}
+	}
 	foreign := nonEmptyLines(foreignOut)
 
-	explicitOut, _, _ := run(ctx, "pacman", "-Qe")
+	explicitOut, _, explicitErr := run(ctx, "pacman", "-Qe")
+	if explicitErr != nil && strings.TrimSpace(explicitOut) != "" {
+		return Check{Name: name, Status: Unknown, Detail: "pacman -Qe: " + lastNonEmptyLine(explicitOut)}
+	}
 	var phiCount, otherCount int
 	for _, line := range nonEmptyLines(explicitOut) {
 		fields := strings.Fields(line)
