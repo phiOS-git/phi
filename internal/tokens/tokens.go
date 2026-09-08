@@ -63,6 +63,21 @@ func Load(root, variant string) (map[string]string, error) {
 			return nil, err
 		}
 	}
+
+	// PHI_VARIANT_IS_DARK is synthesized here, not read from either token
+	// file: design/tokens.{dark,light}.sh are the hand-authored palette
+	// source (§6.1, "nessun altro file contiene un colore"), and this is
+	// neither a colour nor a font — it exists purely so a template can
+	// express a variant-conditional boolean (S-41: GTK's
+	// gtk-application-prefer-dark-theme=true|false) through the same plain
+	// substitution mechanism every other token uses, without Substitute
+	// growing any conditional logic of its own. internal/theme/set.go's
+	// setPortalPreference derives the identical dark/light boolean in Go,
+	// separately, for the portal write — this is the one other place that
+	// same derivation was needed, now shared instead of copied a third time
+	// if another template ever needs it.
+	out["PHI_VARIANT_IS_DARK"] = fmt.Sprintf("%t", variant == "dark")
+
 	return out, nil
 }
 

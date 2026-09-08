@@ -42,6 +42,10 @@ type SetResult struct {
 	Variant  string
 	DryRun   bool
 	Adapters []AdapterResult
+	// PortalPreference is PortalNone under --dry-run: writing the live
+	// preference is exactly the kind of side effect --dry-run promises not
+	// to perform (S-01 AGENT contract, "touch nothing").
+	PortalPreference PortalOutcome
 }
 
 // Changed reports the adapters this run rendered (or would render).
@@ -149,7 +153,86 @@ func Set(root, variant string, dryRun bool) (SetResult, error) {
 		if err := RecordVariant(variant); err != nil {
 			return SetResult{}, fmt.Errorf("recording active variant: %w", err)
 		}
+		result.PortalPreference = setPortalPreference(variant)
+		if err := writeQtPlatformThemeConfig(home); err != nil {
+			return SetResult{}, fmt.Errorf("writing qt5ct/qt6ct config: %w", err)
+		}
 	}
 
 	return result, nil
+}
+
+// writeQtPlatformThemeConfig writes the [Appearance] section of
+// ~/.config/qt5ct/qt5ct.conf and ~/.config/qt6ct/qt6ct.conf, pointing
+// color_scheme_path at the palette file the adapters.txt rows above already
+// rendered. This is NOT an adapters.txt row: that mechanism only knows
+// PHI_* token substitution (internal/theme/render.go's own contract), and
+// color_scheme_path needs the resolved $HOME path this function already has
+// in scope, which is not a design token. Format confirmed against a real
+// qt6ct.conf (github.com/dusklinux/dusky, read for the [Appearance] KEY
+// SHAPE only, no content copied — same practice as the qt6ct colour-scheme
+// template's own note). Every run rewrites only this one section: like
+// every Class C destination in design/adapters.txt, this file is generated,
+// not hand-edited — a real qt5ct/qt6ct GUI run would still work for
+// [Fonts]/[Interface], which this function never touches, but a change to
+// [Appearance] made through that GUI is overwritten on the next
+// `phi theme set`, the same contract every other themed target already has.
+func writeQtPlatformThemeConfig(home string) error {
+	content := "[Appearance]\n" +
+		"custom_palette=true\n" +
+		"standard_dialogs=xdgdesktopportal\n" +
+		"style=Fusion\n"
+
+	for _, name := range []string{"qt5ct", "qt6ct"} {
+		dir := filepath.Join(home, ".config", name)
+		colorPath := filepath.Join(dir, "colors", "phi.conf")
+		full := content + "color_scheme_path=" + colorPath + "\n"
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".conf"), []byte(full), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PortalOutcome says what Set did about the live light/dark preference a
+// portal-aware app (GTK4/libadwaita, and Qt apps behind xdg-desktop-portal)
+// reads to switch WITHOUT a restart — distinct from the generated GTK3/GTK4/
+// Qt colour files below, which are Class C (master plan §6.7's own class
+// table: "tema GTK/Qt per app native" is C, restart required). This is the
+// one live-application path S-41's AGENT bullet asks for ("set the
+// colour-scheme preference through the portal so native apps follow").
+type PortalOutcome string
+
+const (
+	PortalNone      PortalOutcome = "none"      // gsettings not on PATH — degrades, does not fail Set
+	PortalSet       PortalOutcome = "set"       // gsettings ran and exited 0
+	PortalSetFailed PortalOutcome = "failed"
+)
+
+// setPortalPreference writes org.gnome.desktop.interface color-scheme via
+// gsettings. xdg-desktop-portal-gtk (already in profiles/desktop/
+// packages.txt since S-20) implements org.freedesktop.impl.portal.Settings
+// by reading exactly this GSettings key and emitting SettingChanged over
+// D-Bus when it changes — the mechanism every portal-aware toolkit's own
+// docs describe for the light/dark preference specifically, not guessed.
+// Needs gsettings-desktop-schemas (S-41 packages.txt addition) for the
+// schema to exist at all; absence degrades to PortalNone; the GTK3/GTK4/Qt
+// colour FILES above are unaffected either way — an app that ignores the
+// portal signal still gets the right colours after its own Class C restart.
+func setPortalPreference(variant string) PortalOutcome {
+	if _, err := exec.LookPath("gsettings"); err != nil {
+		return PortalNone
+	}
+	value := "default"
+	if variant == "dark" {
+		value = "prefer-dark"
+	}
+	cmd := exec.Command("gsettings", "set", "org.gnome.desktop.interface", "color-scheme", value)
+	if err := cmd.Run(); err != nil {
+		return PortalSetFailed
+	}
+	return PortalSet
 }

@@ -101,5 +101,16 @@ func ThemeSet(result theme.SetResult) string {
 		}
 	}
 
+	switch result.PortalPreference {
+	case theme.PortalSet:
+		b.WriteString("\nportal color-scheme preference: set\n")
+	case theme.PortalSetFailed:
+		b.WriteString("\nportal color-scheme preference: FAILED (gsettings ran, exited non-zero)\n")
+	case theme.PortalNone:
+		if !result.DryRun {
+			b.WriteString("\nportal color-scheme preference: skipped (gsettings not on PATH)\n")
+		}
+	}
+
 	return b.String()
 }
