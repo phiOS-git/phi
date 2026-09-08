@@ -33,6 +33,21 @@ var Keys = map[string]bool{
 	"toggle.dnd":        true,
 	"toggle.spotlight":  true,
 	"toggle.chroma":     true,
+
+	// Added at S-40 (settings panel, master plan §9.12): each of these is a
+	// VALUE the Theme/Devices sections need a key for, not a new toggle
+	// category — §5.6 lists "stato dei toggle runtime" and "variante di
+	// tema" as examples, not an exhaustive enumeration, and phi-shell/
+	// CLAUDE.md's own S-20 precedent (checking the roadmap before reading a
+	// boundary strictly) applies the same way here: S-42/S-43/S-46 already
+	// plan exactly this kind of scalar. Batched into this one phi change
+	// rather than three separate version bumps across M4, since every one
+	// needs the same rebuild-in-chroot-then-reinstall cycle from the user
+	// (master plan §3.1) regardless of which step's QML first reads it.
+	"nightmode.temp":   true, // target Kelvin for the manual (non-True-Tone) night-shift profile, consumed at S-42
+	"toggle.true-tone": true, // ambient-light-driven night shift instead of the clock profile, consumed at S-42 — distinct from toggle.night-mode, which is the feature's own on/off
+	"spotlight.size":   true, // "small" | "medium" | "large", consumed at S-43
+	"chroma.color":     true, // hex string for the static-colour override, consumed at S-46
 }
 
 // Dir is $XDG_STATE_HOME/phi, or $HOME/.local/state/phi when XDG_STATE_HOME
