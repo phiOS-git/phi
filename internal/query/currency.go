@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,21 +20,31 @@ import (
 // falling back to the last known value with no network"). The API
 // (api.frankfurter.dev, ECB-sourced, needs no key) was verified LIVE from
 // this agent's own environment before writing this file — a real GET
-// request, response shape confirmed, not assumed — but this package's own
-// call to it has never run end-to-end: that needs network access no
-// session on this project has to a real phiOS host. Verified API,
-// unverified integration — flagged plainly rather than claimed either way.
+// request, response shape confirmed, not assumed.
 //
-// providerTimeout (query.go, 120ms) is far too short for a real HTTPS
-// round trip, so Query never makes one directly: it reads the on-disk
-// cache, which holds whatever rate was last fetched, and answers from
-// that — "falling back to the last known value with no network" is not a
-// fallback path here, it is the only path any single query ever takes. A
-// stale or missing cache entry triggers a background refresh (its own
-// goroutine, its own 5s deadline, independent of the query that triggered
-// it) so the NEXT query sees a fresher rate; a query against a cache with
-// no entry at all yet returns nothing, the same as any other provider that
-// cannot answer.
+// REAL BUG found on first real-hardware verification (phi-shell's own
+// Launcher, M4): the original design fired the refresh as `go
+// refreshCurrencyCache(...)` — a goroutine. `phi query` is a FRESH,
+// SHORT-LIVED PROCESS per invocation (this package's own header, cold
+// start), and a goroutine does not survive its process exiting — Query()
+// returns almost immediately (the cache read is local and instant), `phi
+// query`'s own caller prints the results and the process ends, and the Go
+// runtime kills every goroutine at that point, mid-HTTP-request. The rate
+// cache could never actually populate: every single invocation started
+// the same doomed fetch and died before it finished. Fixed by spawning a
+// genuinely detached OS-level CHILD PROCESS instead (spawnCurrencyRefresh
+// below) — `phi query refresh-currency FROM TO`, its own hidden CLI
+// sub-verb (internal/cli/query.go), started via exec.Command with Setsid
+// so it survives the parent's exit as an orphan, does the fetch
+// synchronously with a real 5s deadline, and writes the cache for the
+// NEXT query to read.
+//
+// providerTimeout (query.go, 120ms) is still far too short for a real
+// HTTPS round trip, so the query path itself still never makes one
+// directly — it only ever reads the on-disk cache and, when there's
+// nothing usable yet, returns a transient ActionLoading result (see
+// query.go) so the launcher can show something and try again shortly,
+// instead of silently returning nothing the way this provider used to.
 type CurrencyProvider struct{}
 
 func (CurrencyProvider) Name() string { return "currency" }
@@ -48,10 +59,18 @@ func (p CurrencyProvider) Query(_ context.Context, q string) []Result {
 	cache := loadCurrencyCache()
 	rate, fresh := cache.rate(conv.fromUnit, conv.toUnit)
 	if !fresh {
-		go refreshCurrencyCache(conv.fromUnit, conv.toUnit)
+		spawnCurrencyRefresh(conv.fromUnit, conv.toUnit)
 	}
 	if rate == 0 {
-		return nil
+		// Nothing cached at all yet: a transient result, not silence, so
+		// the launcher has something to show and a reason to ask again in
+		// a moment (Action.Kind == ActionLoading, phi-shell/CLAUDE.md's
+		// own new convention for "a provider is working on it").
+		return []Result{{
+			ID: "currency:" + q, Provider: p.Name(),
+			Title: "Fetching exchange rate…", Subtitle: q, Score: 100,
+			Action: Action{Kind: ActionLoading},
+		}}
 	}
 	out := conv.value * rate
 	text := formatNumber(out)
@@ -60,6 +79,23 @@ func (p CurrencyProvider) Query(_ context.Context, q string) []Result {
 		Title: text + " " + conv.toUnit, Subtitle: q, Score: 100,
 		Action: Action{Kind: ActionCopyText, Data: map[string]string{"text": text}},
 	}}
+}
+
+// spawnCurrencyRefresh starts `phi query refresh-currency FROM TO` as a
+// detached child and does not wait for it — see this file's own header
+// for why a goroutine cannot do this job. os.Executable() resolves the
+// currently-running phi binary's own path; a failure there (should not
+// happen for an installed binary) just skips the refresh attempt,
+// consistent with every other "degrade rather than fail the query" choice
+// in this package.
+func spawnCurrencyRefresh(from, to string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(exe, "query", "refresh-currency", from, to)
+	cmd.SysProcAttr = detachedSysProcAttr()
+	_ = cmd.Start()
 }
 
 // parseCurrencyQuery matches "<number> <CODE> to|in <CODE>" — the same
@@ -135,12 +171,14 @@ func (c currencyCache) rate(from, to string) (rate float64, fresh bool) {
 	return e.Rate, time.Since(e.FetchedAt) < currencyCacheMaxAge
 }
 
-// refreshCurrencyCache fetches a fresh rate and writes it to the cache for
-// the NEXT query to read. Deliberately returns nothing to the query that
-// triggered it: by the time an HTTP round trip could complete, that
-// query's own providerTimeout has already elapsed and phi query has
-// already printed its results and exited.
-func refreshCurrencyCache(from, to string) {
+// RefreshCurrencyCache fetches a fresh rate and writes it to the cache.
+// Exported: internal/cli's "query refresh-currency" sub-verb (the detached
+// child spawnCurrencyRefresh starts) calls this directly and synchronously
+// — it IS the whole job of that child process, not a fire-and-forget
+// helper called from within a live query anymore (see this file's own
+// header for why the previous goroutine-based version of that idea could
+// never work).
+func RefreshCurrencyCache(from, to string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

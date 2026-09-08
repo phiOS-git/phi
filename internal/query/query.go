@@ -66,6 +66,14 @@ const (
 	ActionSystem         = "system"         // Data["action"]: lock | suspend | logout
 	ActionChangeDir      = "changeDir"      // Data["path"]: open a terminal there
 	ActionPushView       = "pushView"       // Data["view"]: sub-view navigation (ADR 022)
+	// ActionLoading marks a transient result a provider could not answer
+	// YET, not one it will never answer (nil/no result stays the signal
+	// for that) — added for CurrencyProvider (currency.go's own header has
+	// the real bug this closes), generic so any future slow provider can
+	// use the same shape instead of inventing another. Not actionable:
+	// the shell should not wire selecting one to anything, only re-query
+	// the same text shortly to see if a real result has arrived.
+	ActionLoading = "loading"
 )
 
 // Provider produces candidate Results for a query. q is already trimmed.

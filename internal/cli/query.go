@@ -23,6 +23,14 @@ ranking by hand.
 phi query record <id> marks a result as used, for frecency ranking on
 future queries. The shell calls this once, when the user actually selects
 a result — never on every keystroke the way ranking itself runs.
+
+phi query refresh-currency <FROM> <TO> is an internal, hidden sub-verb
+(fails ADR 021's own admission test on purpose — it is plumbing for
+CurrencyProvider, not a user-facing verb): fetches one exchange rate
+synchronously and writes it to the on-disk cache. CurrencyProvider's own
+Query spawns this as a detached child process rather than calling it
+in-process, since phi query itself is too short-lived to ever finish an
+HTTP round trip before exiting (currency.go's own header has the story).
 `
 
 func runQuery(args []string, stdout, stderr io.Writer, styled bool) int {
@@ -36,6 +44,9 @@ func runQuery(args []string, stdout, stderr io.Writer, styled bool) int {
 	}
 	if args[0] == "record" {
 		return runQueryRecord(args[1:], stdout, stderr)
+	}
+	if args[0] == "refresh-currency" {
+		return runQueryRefreshCurrency(args[1:], stderr)
 	}
 
 	q := strings.Join(args, " ")
@@ -65,6 +76,22 @@ func runQueryRecord(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: query: %v\n", progName, err)
 		return 1
 	}
+	return 0
+}
+
+// runQueryRefreshCurrency is the detached child spawnCurrencyRefresh
+// (currency.go) starts and never waits on — this is its entire job, run
+// synchronously with the real 5s HTTP deadline query.RefreshCurrencyCache
+// itself owns, then exit. Silent on every failure (bad args, network
+// down, a malformed response): there is no terminal for this process to
+// report to, and the NEXT live query's own CurrencyProvider.Query will
+// just try spawning another refresh, exactly as if this one had never
+// run.
+func runQueryRefreshCurrency(args []string, stderr io.Writer) int {
+	if len(args) != 2 {
+		return 1
+	}
+	query.RefreshCurrencyCache(args[0], args[1])
 	return 0
 }
 
