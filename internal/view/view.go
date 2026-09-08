@@ -33,6 +33,7 @@ var Commands = []Command{
 	{"theme", "render, set, preview, list and check design tokens"},
 	{"state", "get, set and list runtime state ($XDG_STATE_HOME/phi)"},
 	{"doctor", "disk, systemd, dotfiles drift, SMART, services, packages"},
+	{"query", "rank launcher results (applications, windows, calculator, ...)"},
 }
 
 // Version renders the --version output. It is identical whether or not
