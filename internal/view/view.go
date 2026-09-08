@@ -34,6 +34,8 @@ var Commands = []Command{
 	{"state", "get, set and list runtime state ($XDG_STATE_HOME/phi)"},
 	{"doctor", "disk, systemd, dotfiles drift, SMART, services, packages"},
 	{"query", "rank launcher results (applications, windows, calculator, ...)"},
+	{"pkg", "list installed packages by category (T0/AUR/T4/phi-packages)"},
+	{"update", "snapshot, pacman -Syu, regenerate themed configs (interactive)"},
 }
 
 // Version renders the --version output. It is identical whether or not
