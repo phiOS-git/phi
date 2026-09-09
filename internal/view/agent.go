@@ -29,8 +29,20 @@ func AgentProjectList(projects []string, active string, personalities []string) 
 	return b.String()
 }
 
-// AgentMemoryList renders `phi agent memory list`.
-func AgentMemoryList(project string, proposals []string) string {
+// AgentMemoryList renders `phi agent memory list`. When not styled (output
+// redirected — this is how the shell panel reads it) it emits exactly one
+// bare proposal name per line and nothing else, so a name containing a space
+// or a colon still reaches the reader intact. A proposal that exists on disk
+// but never surfaces would be the one silent failure §8.6 cannot tolerate.
+func AgentMemoryList(project string, proposals []string, styled bool) string {
+	if !styled {
+		var b strings.Builder
+		for _, p := range proposals {
+			b.WriteString(p)
+			b.WriteByte('\n')
+		}
+		return b.String()
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "project: %s\npending memory proposals:\n", project)
 	if len(proposals) == 0 {

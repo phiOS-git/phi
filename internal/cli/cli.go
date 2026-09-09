@@ -69,7 +69,7 @@ func Run(args []string, stdout, stderr io.Writer, styled bool) int {
 		return runUpdate(args[1:], stdout, stderr)
 
 	case "agent":
-		return runAgent(args[1:], stdout, stderr)
+		return runAgent(args[1:], stdout, stderr, styled)
 
 	default:
 		return runFallback(args, stdout, stderr)

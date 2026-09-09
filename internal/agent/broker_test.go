@@ -283,11 +283,21 @@ func TestBrokerMeterRecords(t *testing.T) {
 	defer stop()
 
 	resp, _ := http.Post(base+"/v1/messages", "application/json", strings.NewReader(`{"model":"claude-x"}`))
+	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	data, err := os.ReadFile(meterPath)
-	if err != nil {
-		t.Fatal(err)
+	// The meter line is written by the handler goroutine after ServeHTTP
+	// returns; the client seeing EOF does not order against that. Poll.
+	var data []byte
+	for deadline := time.Now().Add(2 * time.Second); ; {
+		data, err = os.ReadFile(meterPath)
+		if err == nil && len(strings.TrimSpace(string(data))) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("meter line not written within 2s (err=%v, data=%q)", err, data)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	var rec meterRecord
 	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &rec); err != nil {

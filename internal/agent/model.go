@@ -234,8 +234,22 @@ func (m *Model) Proposals(project string) ([]string, error) {
 	return out, nil
 }
 
+// checkSegment rejects a proposal file name that is not a single path
+// segment. The name arrives straight from a CLI argument or the shell panel;
+// filepath.Join would otherwise resolve "../../etc/passwd" out of proposte/.
+func checkSegment(name string) error {
+	if name == "" || name == "." || name == ".." ||
+		strings.ContainsRune(name, '/') || strings.ContainsRune(name, filepath.Separator) {
+		return fmt.Errorf("invalid proposal name %q: must be a single file name", name)
+	}
+	return nil
+}
+
 // ProposalText returns the literal text of one proposal.
 func (m *Model) ProposalText(project, name string) (string, error) {
+	if err := checkSegment(name); err != nil {
+		return "", err
+	}
 	return readFileString(filepath.Join(m.projectDir(project), "proposte", name))
 }
 
@@ -249,6 +263,9 @@ func (m *Model) MemoryText(project string) (string, error) {
 // proposal (§8.4) — the only path by which memory is ever written, and it
 // runs outside the containment.
 func (m *Model) AcceptProposal(project, name string) error {
+	if err := checkSegment(name); err != nil {
+		return err
+	}
 	pPath := filepath.Join(m.projectDir(project), "proposte", name)
 	text, err := readFileString(pPath)
 	if err != nil {
@@ -275,6 +292,9 @@ func (m *Model) AcceptProposal(project, name string) error {
 
 // RejectProposal removes a proposal without promoting it.
 func (m *Model) RejectProposal(project, name string) error {
+	if err := checkSegment(name); err != nil {
+		return err
+	}
 	return os.Remove(filepath.Join(m.projectDir(project), "proposte", name))
 }
 

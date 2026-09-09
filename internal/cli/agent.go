@@ -43,7 +43,7 @@ phios-dotfiles) are not phi's: phi only talks to opencode over its
 documented loopback HTTP API.
 `
 
-func runAgent(args []string, stdout, stderr io.Writer) int {
+func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, agentUsage)
 		return 1
@@ -58,7 +58,7 @@ func runAgent(args []string, stdout, stderr io.Writer) int {
 	case "project":
 		return runAgentProject(args[1:], stdout, stderr)
 	case "memory":
-		return runAgentMemory(args[1:], stdout, stderr)
+		return runAgentMemory(args[1:], stdout, stderr, styled)
 	case "ask":
 		return runAgentAsk(args[1:], stdout, stderr)
 	case "-h", "--help":
@@ -277,7 +277,7 @@ func runAgentAsk(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runAgentMemory(args []string, stdout, stderr io.Writer) int {
+func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 	m, err := agent.OpenModel()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: agent memory: %v\n", progName, err)
@@ -313,7 +313,7 @@ func runAgentMemory(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "%s: agent memory: %v\n", progName, err)
 			return 1
 		}
-		fmt.Fprint(stdout, view.AgentMemoryList(project, props))
+		fmt.Fprint(stdout, view.AgentMemoryList(project, props, styled))
 		return 0
 	case "show":
 		if len(rest) != 1 {

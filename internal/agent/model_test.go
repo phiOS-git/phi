@@ -86,6 +86,27 @@ func TestModelInvalidNames(t *testing.T) {
 	}
 }
 
+func TestModelProposalNameTraversal(t *testing.T) {
+	m := testModel(t)
+	if _, err := m.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.NewProject("p"); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"../memoria.md", "a/b", "..", ".", ""} {
+		if _, err := m.ProposalText("p", bad); err == nil {
+			t.Errorf("ProposalText(%q) should be rejected", bad)
+		}
+		if err := m.AcceptProposal("p", bad); err == nil {
+			t.Errorf("AcceptProposal(%q) should be rejected", bad)
+		}
+		if err := m.RejectProposal("p", bad); err == nil {
+			t.Errorf("RejectProposal(%q) should be rejected", bad)
+		}
+	}
+}
+
 func TestModelAcceptProposalAppendsLiteral(t *testing.T) {
 	m := testModel(t)
 	if _, err := m.Ensure(); err != nil {
