@@ -33,7 +33,10 @@ Verbs:
                     LITERAL proposal text to memoria.md and removes it — the
                     client promoting an approved proposal (§8.4), the only
                     path by which memory is ever written.
-  ask               (S-74) inline one-shot onto the running A1 service.
+  ask [--personality NAME] PROMPT
+                    one inline question to the already-running A1 service.
+                    The session is created, used, and deleted — it never
+                    reaches the panel list or memory (§10.2).
 
 The engine (opencode) and the containment (phi-agent-contain, in
 phios-dotfiles) are not phi's: phi only talks to opencode over its
@@ -56,6 +59,8 @@ func runAgent(args []string, stdout, stderr io.Writer) int {
 		return runAgentProject(args[1:], stdout, stderr)
 	case "memory":
 		return runAgentMemory(args[1:], stdout, stderr)
+	case "ask":
+		return runAgentAsk(args[1:], stdout, stderr)
 	case "-h", "--help":
 		fmt.Fprint(stdout, agentUsage)
 		return 0
@@ -234,6 +239,42 @@ func runAgentProject(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: agent project: unknown subcommand %q\n", progName, sub)
 		return 1
 	}
+}
+
+func runAgentAsk(args []string, stdout, stderr io.Writer) int {
+	var personality string
+	var promptParts []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--personality", "--agent":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s: agent ask: %s needs a name\n", progName, args[i])
+				return 1
+			}
+			personality = args[i+1]
+			i++
+		case "-h", "--help":
+			fmt.Fprint(stdout, agentUsage)
+			return 0
+		default:
+			promptParts = append(promptParts, args[i])
+		}
+	}
+	prompt := strings.TrimSpace(strings.Join(promptParts, " "))
+	if prompt == "" {
+		fmt.Fprintf(stderr, "%s: agent ask: needs a prompt\n", progName)
+		return 1
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	err := agent.Ask(ctx, agent.AskConfig{Personality: personality}, prompt, stdout)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent ask: %v\n", progName, err)
+		return 1
+	}
+	return 0
 }
 
 func runAgentMemory(args []string, stdout, stderr io.Writer) int {

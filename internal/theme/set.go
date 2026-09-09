@@ -207,8 +207,8 @@ func writeQtPlatformThemeConfig(home string) error {
 type PortalOutcome string
 
 const (
-	PortalNone      PortalOutcome = "none"      // gsettings not on PATH — degrades, does not fail Set
-	PortalSet       PortalOutcome = "set"       // gsettings ran and exited 0
+	PortalNone      PortalOutcome = "none" // gsettings not on PATH — degrades, does not fail Set
+	PortalSet       PortalOutcome = "set"  // gsettings ran and exited 0
 	PortalSetFailed PortalOutcome = "failed"
 )
 
