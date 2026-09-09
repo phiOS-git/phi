@@ -188,12 +188,21 @@ func phiContext() (string, error) {
 	}
 	fmt.Fprintf(&b, "phiOS agent context\ninstance: %s\n", inst)
 
-	// Container layout first.
+	personality := os.Getenv("PHI_AGENT_PERSONALITY")
+
+	// Container layout first. Memory is now three levels (delta D-01): system,
+	// the personality in use, and the active project — all always in context.
 	if fileExists("/home/agent/project/progetto.md") || dirExists("/home/agent/project") {
 		project := os.Getenv("PHI_AGENT_PROJECT")
-		fmt.Fprintf(&b, "project: %s\n\n", orNone(project))
+		fmt.Fprintf(&b, "project: %s\npersonality: %s\n\n", orNone(project), orNone(personality))
 		appendFile(&b, "## instructions (progetto.md)", "/home/agent/project/progetto.md")
-		appendFile(&b, "## memory (memoria.md)", "/home/agent/project/memoria.md")
+		appendFile(&b, "## project folders of interest", "/home/agent/project/project.json")
+		appendFile(&b, "## memory — system", "/home/agent/.local/share/memoria.md")
+		if personality != "" {
+			appendFile(&b, "## memory — personality "+personality,
+				"/home/agent/.local/share/personalita/"+personality+"/memoria.md")
+		}
+		appendFile(&b, "## memory — project", "/home/agent/project/memoria.md")
 		appendDirList(&b, "## personalities", "/home/agent/.local/share/personalita")
 		return b.String(), nil
 	}
@@ -204,19 +213,29 @@ func phiContext() (string, error) {
 		return b.String(), err
 	}
 	active, _ := m.ActiveProject()
-	fmt.Fprintf(&b, "project: %s\n\n", orNone(active))
+	fmt.Fprintf(&b, "project: %s\npersonality: %s\n\n", orNone(active), orNone(personality))
 	if active != "" {
 		if s, _ := m.ProjectInstructions(active); s != "" {
 			fmt.Fprintf(&b, "## instructions (progetto.md)\n\n%s\n", s)
 		}
-		if s, _ := m.MemoryText(active); s != "" {
-			fmt.Fprintf(&b, "## memory (memoria.md)\n\n%s\n", s)
-		}
+	}
+	appendMemory(&b, "## memory — system", m, SystemLevel())
+	if personality != "" && m.HasPersonality(personality) {
+		appendMemory(&b, "## memory — personality "+personality, m, PersonalityLevel(personality))
+	}
+	if active != "" {
+		appendMemory(&b, "## memory — project", m, ProjectLevel(active))
 	}
 	if ps, _ := m.Personalities(); len(ps) > 0 {
 		fmt.Fprintf(&b, "## personalities\n\n%s\n", strings.Join(ps, ", "))
 	}
 	return b.String(), nil
+}
+
+func appendMemory(b *strings.Builder, heading string, m *Model, l MemLevel) {
+	if s, _ := m.MemoryText(l); strings.TrimSpace(s) != "" {
+		fmt.Fprintf(b, "%s\n\n%s\n\n", heading, strings.TrimRight(s, "\n"))
+	}
 }
 
 func orNone(s string) string {

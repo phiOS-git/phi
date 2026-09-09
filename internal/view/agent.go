@@ -3,6 +3,8 @@ package view
 import (
 	"fmt"
 	"strings"
+
+	"phi/internal/agent"
 )
 
 // AgentProjectList renders `phi agent project list`.
@@ -53,6 +55,60 @@ func AgentMemoryList(project string, proposals []string, styled bool) string {
 		fmt.Fprintf(&b, "  %s\n", p)
 	}
 	b.WriteString("\nreview with `phi agent memory show FILE`, then accept or reject.\n")
+	return b.String()
+}
+
+// AgentSearch renders `phi agent search`, grouped project -> conversation
+// (phios-agente-delta.md D-06). Each hit says whether the query matched a
+// title or the body.
+func AgentSearch(query string, res agent.SearchResults) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "search: %q\n", query)
+	if len(res.Groups) == 0 {
+		b.WriteString("  (no matches)\n")
+		return b.String()
+	}
+	for _, g := range res.Groups {
+		label := g.Project
+		if label == "_unfiled" {
+			label = "(unfiled)"
+		} else if label == "_memory" {
+			label = "(memory & instructions)"
+		}
+		fmt.Fprintf(&b, "\n%s\n", label)
+		for _, h := range g.Hits {
+			where := "body"
+			if h.InTitle && h.InBody {
+				where = "title+body"
+			} else if h.InTitle {
+				where = "title"
+			}
+			fmt.Fprintf(&b, "  [%s] %s  (%s)\n", h.Kind, h.Title, where)
+			if h.Snippet != "" {
+				fmt.Fprintf(&b, "      %s\n", h.Snippet)
+			}
+		}
+	}
+	return b.String()
+}
+
+// AgentSessionList renders `phi agent session list` (delta D-07).
+func AgentSessionList(recs []agent.SessionRecord) string {
+	var b strings.Builder
+	if len(recs) == 0 {
+		b.WriteString("no coding sessions recorded\n")
+		return b.String()
+	}
+	for _, r := range recs {
+		fmt.Fprintf(&b, "%s  %-7s  %s\n", r.ID, r.Status, r.Dir)
+		if !r.Started.IsZero() {
+			fmt.Fprintf(&b, "        started %s", r.Started.Local().Format("2006-01-02 15:04"))
+			if r.Status == "ended" && !r.Ended.IsZero() {
+				fmt.Fprintf(&b, ", ended %s", r.Ended.Local().Format("2006-01-02 15:04"))
+			}
+			b.WriteByte('\n')
+		}
+	}
 	return b.String()
 }
 
