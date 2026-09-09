@@ -215,6 +215,57 @@ func TestBrokerRequireLoopback(t *testing.T) {
 	}
 }
 
+func TestRequireLocalListen(t *testing.T) {
+	good := []string{"127.0.0.1:8789", "localhost:1", "[::1]:9", "unix:/run/phi-agent/net/broker-a2.sock"}
+	for _, a := range good {
+		if err := requireLocalListen(a); err != nil {
+			t.Errorf("requireLocalListen(%q) = %v, want nil", a, err)
+		}
+	}
+	bad := []string{"0.0.0.0:8789", "example.com:443", "[2001:db8::1]:443", "unix:"}
+	for _, a := range bad {
+		if err := requireLocalListen(a); err == nil {
+			t.Errorf("requireLocalListen(%q) = nil, want error", a)
+		}
+	}
+	// requireLoopback still rejects unix.
+	if err := requireLoopback("unix:/tmp/x.sock"); err == nil {
+		t.Error("requireLoopback should reject a unix address")
+	}
+}
+
+func TestBrokerUnixListen(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "ok")
+	}))
+	defer up.Close()
+
+	sock := filepath.Join(t.TempDir(), "broker.sock")
+	b := newTestBroker(t, up.URL, func(bc *BrokerConfig) { bc.Listen = "unix:" + sock })
+
+	ln, err := b.listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: b.handler()}
+	go srv.Serve(ln)
+	defer srv.Close()
+
+	c := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+		},
+	}}
+	resp, err := c.Post("http://unix/v1/messages", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestBrokerMeterRecords(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "hello")

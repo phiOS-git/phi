@@ -115,7 +115,7 @@ func LoadBroker(inst Instance) (*Broker, error) {
 	if cfg.Listen == "" {
 		cfg.Listen = "127.0.0.1:8789"
 	}
-	if err := requireLoopback(cfg.Listen); err != nil {
+	if err := requireLocalListen(cfg.Listen); err != nil {
 		return nil, fmt.Errorf("%s: listen: %w", cfgPath, err)
 	}
 	if cfg.Upstream == "" {
@@ -195,7 +195,18 @@ func loadProviderKey(cfgDir string) (key, src string, err error) {
 	return "", "", errors.New("no provider key file found (set PHI_AGENT_BROKER_KEY_FILE, or create <config>/phi-agent/<instance>/provider-key with mode 600)")
 }
 
-func requireLoopback(addr string) error {
+// requireLocalListen accepts a loopback host:port, or a "unix:<path>"
+// address. A2's broker listens on a unix socket bind-mounted into the
+// containment (S-72) — the container has --unshare-net and no TCP path to
+// the host loopback. Anything routable is rejected: the broker is never
+// reachable off the machine (§6.2, §5.3).
+func requireLocalListen(addr string) error {
+	if network, path, ok := splitUnix(addr); ok {
+		if network != "unix" || path == "" {
+			return fmt.Errorf("bad unix listen address %q", addr)
+		}
+		return nil
+	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return err
@@ -205,12 +216,49 @@ func requireLoopback(addr string) error {
 		if host == "localhost" {
 			return nil
 		}
-		return fmt.Errorf("must be a loopback address, got %q", host)
+		return fmt.Errorf("must be a loopback or unix address, got %q", host)
 	}
 	if !ip.IsLoopback() {
-		return fmt.Errorf("must be a loopback address, got %q", host)
+		return fmt.Errorf("must be a loopback or unix address, got %q", host)
 	}
 	return nil
+}
+
+// requireLoopback is kept for tests and rejects unix addresses too.
+func requireLoopback(addr string) error {
+	if _, _, ok := splitUnix(addr); ok {
+		return fmt.Errorf("not a loopback address: %q", addr)
+	}
+	return requireLocalListen(addr)
+}
+
+func splitUnix(addr string) (network, path string, ok bool) {
+	if strings.HasPrefix(addr, "unix:") {
+		return "unix", strings.TrimPrefix(addr, "unix:"), true
+	}
+	return "", "", false
+}
+
+// listen binds the configured address, removing a stale unix socket first.
+func (b *Broker) listen() (net.Listener, error) {
+	if _, path, ok := splitUnix(b.cfg.Listen); ok {
+		path = expandHome(path)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, err
+		}
+		// A leftover socket from an unclean stop would make bind fail with
+		// EADDRINUSE.
+		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
+			_ = os.Remove(path)
+		}
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			return nil, err
+		}
+		_ = os.Chmod(path, 0o600)
+		return ln, nil
+	}
+	return net.Listen("tcp", b.cfg.Listen)
 }
 
 func expandHome(p string) string {
@@ -325,7 +373,7 @@ func (b *Broker) Run(ctx context.Context) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	ln, err := net.Listen("tcp", b.cfg.Listen)
+	ln, err := b.listen()
 	if err != nil {
 		return fmt.Errorf("bind %s: %w", b.cfg.Listen, err)
 	}
