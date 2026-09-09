@@ -36,6 +36,7 @@ var Commands = []Command{
 	{"query", "rank launcher results (applications, windows, calculator, ...)"},
 	{"pkg", "list installed packages by category (T0/AUR/T4/phi-packages)"},
 	{"update", "snapshot, pacman -Syu, regenerate themed configs (interactive)"},
+	{"agent", "AI agent subsystem: broker, mcp, ask, project (phios-agente.md)"},
 }
 
 // Version renders the --version output. It is identical whether or not
