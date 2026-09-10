@@ -14,11 +14,19 @@ const queryUsage = `usage: phi query <text>
        phi query record <id>
 
 Ranks launcher results for <text> across every provider (applications,
-open windows, calculator, currency conversion, directory jump via zoxide,
-SSH hosts, shell commands, web search, files, system actions) and prints
-them, most relevant first. JSON when stdout is redirected (the shape
-phi-shell's Launcher parses); a plain list on a terminal, for testing
-ranking by hand.
+open windows, calculator, unit + currency conversion, directory jump via
+zoxide, SSH hosts, shell commands, web search, files, system actions) and
+prints them, most relevant first. JSON when stdout is redirected (the
+shape phi-shell's Launcher parses); a plain list on a terminal, for
+testing ranking by hand.
+
+The calculator understands arithmetic ("2+2*3", "sqrt(2)!", "2^10"),
+constants and functions, unit conversion in free form ("100km to m",
+"-40 C to F", "2 GiB to MB"), percentages ("20% of 150"), equations and
+inequalities ("solve x^2-4=0", "x^2-4 < 0"), calculus ("d/dx sin(x)",
+"integrate x^2 from 0 to 3") and plots ("plot sin(x)"). Results that need
+more than one line carry a "rich" payload (steps, roots, a sampled curve)
+the shell renders as a card.
 
 phi query record <id> marks a result as used, for frecency ranking on
 future queries. The shell calls this once, when the user actually selects

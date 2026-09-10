@@ -44,6 +44,11 @@ type Result struct {
 	Subtitle string  `json:"subtitle"`
 	Score    float64 `json:"score"`
 	Action   Action  `json:"action"`
+	// Rich is an optional structured payload for results a single line
+	// cannot express (calculator steps, plots, a converter's alternate
+	// units). nil for every other provider; the shell renders it as an
+	// expanded card and still honours Action for copy/select.
+	Rich *RichResult `json:"rich,omitempty"`
 }
 
 // Action is what selecting a Result does. Kind is a closed set the shell
