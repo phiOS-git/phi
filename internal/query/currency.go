@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"phi/internal/mathx"
 	"phi/internal/state"
 )
 
@@ -73,7 +75,7 @@ func (p CurrencyProvider) Query(_ context.Context, q string) []Result {
 		}}
 	}
 	out := conv.value * rate
-	text := formatNumber(out)
+	text := mathx.FormatNumber(out)
 	return []Result{{
 		ID: "currency:" + q, Provider: p.Name(),
 		Title: text + " " + conv.toUnit, Subtitle: q, Score: 100,
@@ -108,23 +110,62 @@ type currencyQuery struct {
 	fromUnit, toUnit string
 }
 
+// currencySymbols maps the common single-character currency signs to their
+// ISO code so "$100 to eur" and "100 usd to eur" both parse.
+var currencySymbols = strings.NewReplacer(
+	"$", " usd ", "€", " eur ", "£", " gbp ", "¥", " jpy ",
+	"₹", " inr ", "₽", " rub ", "₩", " krw ", "₺", " try ",
+	"₪", " ils ", "₫", " vnd ", "R$", " brl ", "CHF", " chf ",
+)
+
 func parseCurrencyQuery(s string) (currencyQuery, bool) {
+	s = currencySymbols.Replace(s)
+	// Split a number glued to a code: "100usd" -> "100 usd".
+	s = reGluedNumberCode.ReplaceAllString(s, "$1 $2")
+	// Normalise the arrow connectors the physical-unit parser also takes.
+	s = strings.NewReplacer("->", " to ", "=>", " to ", "→", " to ", " into ", " to ", " as ", " to ").Replace(s)
+
 	fields := strings.Fields(s)
+
+	// "<CODE> to <CODE>" with an implicit amount of 1.
+	if len(fields) == 3 && isConnector(fields[1]) {
+		if from, to, ok := codePair(fields[0], fields[2]); ok {
+			return currencyQuery{value: 1, fromUnit: from, toUnit: to}, true
+		}
+	}
 	if len(fields) != 4 {
 		return currencyQuery{}, false
 	}
-	if fields[2] != "to" && fields[2] != "in" {
+	if !isConnector(fields[2]) {
 		return currencyQuery{}, false
 	}
-	val, err := strconv.ParseFloat(fields[0], 64)
+	val, err := strconv.ParseFloat(strings.ReplaceAll(fields[0], ",", ""), 64)
 	if err != nil {
 		return currencyQuery{}, false
 	}
-	from, to := strings.ToUpper(fields[1]), strings.ToUpper(fields[3])
-	if len(from) != 3 || len(to) != 3 {
+	from, to, ok := codePair(fields[1], fields[3])
+	if !ok {
 		return currencyQuery{}, false
 	}
 	return currencyQuery{value: val, fromUnit: from, toUnit: to}, true
+}
+
+var reGluedNumberCode = regexp.MustCompile(`(?i)(\d)([a-z]{3})\b`)
+
+func isConnector(s string) bool {
+	switch strings.ToLower(s) {
+	case "to", "in":
+		return true
+	}
+	return false
+}
+
+func codePair(a, b string) (from, to string, ok bool) {
+	from, to = strings.ToUpper(a), strings.ToUpper(b)
+	if len(from) != 3 || len(to) != 3 || !isAlpha(strings.ToLower(from)) || !isAlpha(strings.ToLower(to)) {
+		return "", "", false
+	}
+	return from, to, true
 }
 
 type currencyCacheEntry struct {
