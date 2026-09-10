@@ -27,6 +27,11 @@ Verbs:
   list              list the themed targets design/adapters.txt declares
   check             report the WCAG contrast ratio of every checked token
                     pair on both variants
+  contrast HEX [on HEX]
+                    print the WCAG contrast ratio of one #rrggbb against
+                    another (default: the active variant's bg-0) and
+                    whether it clears the 4.5:1 AA floor. For the settings
+                    panel's live "phi theme check" on an unsaved colour.
 
 --variant defaults to the active variant recorded by the last 'phi theme
 set', or dark when none was ever recorded.
@@ -55,6 +60,8 @@ func runTheme(args []string, stdout, stderr io.Writer) int {
 		return runThemeList(root, stdout, stderr)
 	case "check":
 		return runThemeCheck(root, stdout, stderr)
+	case "contrast":
+		return runThemeContrast(args[1:], root, stdout, stderr)
 	case "-h", "--help":
 		fmt.Fprint(stdout, themeUsage)
 		return 0
@@ -218,6 +225,58 @@ func runThemeCheck(root string, stdout, stderr io.Writer) int {
 		if !r.Pass {
 			return 1
 		}
+	}
+	return 0
+}
+
+// runThemeContrast: `phi theme contrast HEX [on HEX]`. Prints
+// "<ratio> <pass|fail>" (e.g. "4.52 pass"), one line, parseable off a
+// terminal — this verb exists for the settings panel's live check on a
+// colour the user is still typing, before it is ever written as an
+// override. Exit non-zero when the pair fails the 4.5:1 AA floor, so it
+// composes in a script the same way `phi theme check` does.
+func runThemeContrast(args []string, root string, stdout, stderr io.Writer) int {
+	var fg, bg string
+	switch len(args) {
+	case 1:
+		fg = args[0]
+	case 3:
+		if args[1] != "on" {
+			fmt.Fprint(stderr, themeUsage)
+			return 1
+		}
+		fg, bg = args[0], args[2]
+	default:
+		fmt.Fprint(stderr, themeUsage)
+		return 1
+	}
+
+	if bg == "" {
+		variant := theme.CurrentVariant()
+		tk, err := tokens.Load(root, variant)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: theme: %v\n", progName, err)
+			return 1
+		}
+		bg = tk["PHI_BG_0"]
+		if bg == "" {
+			fmt.Fprintf(stderr, "%s: theme: no PHI_BG_0 token for variant %q\n", progName, variant)
+			return 1
+		}
+	}
+
+	ratio, err := tokens.Contrast(fg, bg)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: theme: %v\n", progName, err)
+		return 1
+	}
+	status := "fail"
+	if ratio >= theme.MinContrast {
+		status = "pass"
+	}
+	fmt.Fprintf(stdout, "%.2f %s\n", ratio, status)
+	if status == "fail" {
+		return 1
 	}
 	return 0
 }
