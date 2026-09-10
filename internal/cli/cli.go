@@ -59,6 +59,9 @@ func Run(args []string, stdout, stderr io.Writer, styled bool) int {
 	case "vpn":
 		return runVpn(args[1:], stdout, stderr)
 
+	case "firewall":
+		return runFirewall(args[1:], stdout, stderr)
+
 	case "state":
 		return runState(args[1:], stdout, stderr)
 
