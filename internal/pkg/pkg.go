@@ -10,11 +10,16 @@ package pkg
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"phi/internal/build"
+	"phi/internal/tokens"
 )
 
 // Category is one of the four groups CLAUDE.md rule 7 and master plan §15
@@ -156,6 +161,157 @@ func Check(ctx context.Context) (CheckResult, error) {
 		}
 	}
 	return CheckResult{Entries: entries, T4Unverifiable: t4, Stale: stale}, nil
+}
+
+// ============================================================
+// settings-overhaul batch J — the Updates settings-panel section wants
+// "System state" (component versions) split from "Packages" (one list per
+// package manager). Both are read-only; `phi update` stays the only thing
+// that changes anything and it runs from a terminal, never from here.
+// ============================================================
+
+// Component is one versioned piece of phiOS for the "System state" block.
+type Component struct {
+	Name    string
+	Version string
+	Source  string // how the version was read — "build", "pacman -Q", "git describe"
+}
+
+// SystemState reports the versions of phiOS (the dotfiles checkout), phi
+// (baked in at build), and each installed phi-* package. Every lookup is
+// best-effort: a component whose version cannot be read is simply omitted,
+// never guessed.
+func SystemState(ctx context.Context) []Component {
+	var out []Component
+
+	out = append(out, Component{Name: "phi", Version: build.Version, Source: "build"})
+
+	if root, err := tokens.Root(); err == nil {
+		if v := gitDescribe(ctx, root); v != "" {
+			out = append(out, Component{Name: "phios-dotfiles", Version: v, Source: "git describe"})
+		}
+	}
+
+	// The installed phi-* packages (phi-shell and any others) — the real
+	// "phi-packages" version on this machine is whatever pacman has.
+	if entries, _, err := List(ctx); err == nil {
+		for _, e := range entries {
+			if e.Category == CategoryPhiPackages && e.Name != "phi" {
+				out = append(out, Component{Name: e.Name, Version: e.Version, Source: "pacman -Q"})
+			}
+		}
+	}
+	return out
+}
+
+func gitDescribe(ctx context.Context, dir string) string {
+	if _, err := exec.LookPath("git"); err != nil {
+		return ""
+	}
+	cctx, cancel := context.WithTimeout(ctx, cmdTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(cctx, "git", "-C", dir, "describe", "--tags", "--always", "--dirty")
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(buf.String())
+}
+
+// Manager is a package-manager name for `phi pkg list --manager <name>`.
+type Manager string
+
+const (
+	ManagerPacman   Manager = "pacman"
+	ManagerAUR      Manager = "aur"
+	ManagerPhi      Manager = "phi"
+	ManagerAppImage Manager = "appimage"
+	ManagerNPM      Manager = "npm"
+	ManagerFlatpak  Manager = "flatpak"
+)
+
+// Managers is the fixed order the Updates section renders.
+var Managers = []Manager{ManagerPhi, ManagerPacman, ManagerAUR, ManagerNPM, ManagerFlatpak, ManagerAppImage}
+
+// ManagerListing is one manager's slice of `phi pkg list --manager`.
+type ManagerListing struct {
+	Manager     Manager
+	Implemented bool
+	Note        string // shown when !Implemented, or as extra context
+	Entries     []Entry
+}
+
+// ListManager returns the installed packages for one manager. pacman / aur /
+// phi are filtered out of the existing pacman-backed List; appimage scans
+// ~/Applications; npm and flatpak are explicit "not implemented" markers
+// (their real listings are a later pass — the shell renders the Note).
+func ListManager(ctx context.Context, m Manager) (ManagerListing, error) {
+	switch m {
+	case ManagerPacman, ManagerAUR, ManagerPhi:
+		entries, _, err := List(ctx)
+		if err != nil {
+			return ManagerListing{Manager: m}, err
+		}
+		want := map[Manager]Category{
+			ManagerPacman: CategoryT0,
+			ManagerAUR:    CategoryAUR,
+			ManagerPhi:    CategoryPhiPackages,
+		}[m]
+		var rows []Entry
+		for _, e := range entries {
+			if e.Category == want {
+				rows = append(rows, e)
+			}
+		}
+		return ManagerListing{Manager: m, Implemented: true, Entries: rows}, nil
+
+	case ManagerAppImage:
+		rows, err := appImages()
+		return ManagerListing{Manager: m, Implemented: true, Entries: rows, Note: appImagesDir()}, err
+
+	case ManagerNPM:
+		return ManagerListing{Manager: m, Implemented: false,
+			Note: "not implemented — list with `npm ls -g --depth 0`"}, nil
+	case ManagerFlatpak:
+		return ManagerListing{Manager: m, Implemented: false,
+			Note: "not implemented — list with `flatpak list --app`"}, nil
+	}
+	return ManagerListing{Manager: m}, nil
+}
+
+func appImagesDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "~/Applications"
+	}
+	return filepath.Join(home, "Applications")
+}
+
+// appImages lists ~/Applications/*.AppImage (case-insensitive), by
+// filename — an AppImage carries no queryable version, so Version is "".
+func appImages() ([]Entry, error) {
+	dir := appImagesDir()
+	ents, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(e.Name()), ".appimage") {
+			out = append(out, Entry{Name: e.Name(), Category: "AppImage"})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out, nil
 }
 
 func nonEmptyLines(s string) []string {
