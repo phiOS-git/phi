@@ -128,17 +128,78 @@ func linkExists(ctx context.Context, iface string) bool {
 	return exec.CommandContext(cctx, "ip", "link", "show", iface).Run() == nil
 }
 
+// noDetailBackoff is how long a `sudo -n wg show` denial suppresses further
+// attempts. The shell polls `phi vpn status` on a timer (Services/Vpn.qml,
+// 15s), and each poll is a fresh process, so without an on-disk memo a
+// missing sudoers drop-in means one denied sudo — a journal line each — every
+// 15 seconds forever. The up/down state itself needs no privilege, so the
+// only thing lost while backed off is the handshake/transfer detail.
+const noDetailBackoff = time.Hour
+
+// noDetailMarker is ~/.cache/phi/vpn-nodetail. Its mtime is the last denial.
+func noDetailMarker() string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "phi", "vpn-nodetail")
+}
+
+func detailBackedOff() bool {
+	m := noDetailMarker()
+	if m == "" {
+		return false
+	}
+	fi, err := os.Stat(m)
+	if err != nil {
+		return false
+	}
+	return time.Since(fi.ModTime()) < noDetailBackoff
+}
+
+func markDetailDenied() {
+	m := noDetailMarker()
+	if m == "" {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(m), 0o755)
+	now := time.Now()
+	if f, err := os.OpenFile(m, os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		_ = f.Close()
+	}
+	_ = os.Chtimes(m, now, now)
+}
+
+func clearDetailDenied() {
+	if m := noDetailMarker(); m != "" {
+		_ = os.Remove(m)
+	}
+}
+
 // wgPeerStats runs `sudo -n wg show <iface> dump` and extracts ONLY the
 // handshake age and byte counters from the first peer line. Endpoint and
-// allowed-ips columns are read past and dropped.
+// allowed-ips columns are read past and dropped. A recent denial (no sudoers
+// drop-in) short-circuits it — see noDetailBackoff.
 func wgPeerStats(ctx context.Context, iface string) (handshakeAge, rx, tx string, ok bool) {
+	if detailBackedOff() {
+		return "", "", "", false
+	}
 	cctx, cancel := context.WithTimeout(ctx, cmdTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, "sudo", "-n", "wg", "show", iface, "dump")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
+		// Only a sudo denial (no drop-in) earns the hour-long backoff; a
+		// timeout or a transient `wg` failure just fails this one poll.
+		if s := stderr.String(); strings.Contains(s, "password is required") ||
+			strings.Contains(s, "not allowed") || strings.Contains(s, "a terminal is required") {
+			markDetailDenied()
+		}
 		return "", "", "", false
 	}
+	clearDetailDenied()
 	sc := bufio.NewScanner(strings.NewReader(string(stdout)))
 	line := 0
 	for sc.Scan() {
