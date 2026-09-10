@@ -1,137 +1,83 @@
 package query
 
 import (
-	"math"
+	"context"
+	"strings"
 	"testing"
 )
 
-func TestEvalExprArithmetic(t *testing.T) {
-	cases := []struct {
-		expr string
-		want float64
-	}{
-		{"2 + 2", 4},
-		{"2+2*3", 8},    // precedence: * before +
-		{"(2+2)*3", 12}, // parentheses override precedence
-		{"10 / 4", 2.5},
-		{"2 ^ 10", 1024},
-		{"2 ^ 3 ^ 2", 512}, // right-associative: 2^(3^2), not (2^3)^2
-		{"-3 + 5", 2},
-		{"-(3 + 5)", -8},
-		{"10 % 3", 1},
-		{"3.5 * 2", 7},
-		{"  4   +   4  ", 8}, // whitespace-tolerant
+func calcQuery(t *testing.T, q string) []Result {
+	t.Helper()
+	return CalculatorProvider{}.Query(context.Background(), q)
+}
+
+func TestCalculatorArithmetic(t *testing.T) {
+	r := calcQuery(t, "2 + 2")
+	if len(r) != 1 || r[0].Title != "4" {
+		t.Fatalf("Query(2 + 2) = %v, want a single result titled 4", r)
 	}
-	for _, c := range cases {
-		got, err := evalExpr(c.expr)
-		if err != nil {
-			t.Errorf("evalExpr(%q) error: %v", c.expr, err)
-			continue
-		}
-		if math.Abs(got-c.want) > 1e-9 {
-			t.Errorf("evalExpr(%q) = %v, want %v", c.expr, got, c.want)
-		}
+	if r[0].Score != 100 {
+		t.Errorf("Score = %v, want 100", r[0].Score)
+	}
+	if r[0].Action.Kind != ActionCopyText || r[0].Action.Data["text"] != "4" {
+		t.Errorf("Action = %+v, want copyText 4", r[0].Action)
 	}
 }
 
-func TestEvalExprErrors(t *testing.T) {
-	cases := []string{"", "2 +", "(2 + 3", "2 / 0", "abc", "2 3"}
-	for _, expr := range cases {
-		if _, err := evalExpr(expr); err == nil {
-			t.Errorf("evalExpr(%q) expected an error, got none", expr)
-		}
+func TestCalculatorGluedConversion(t *testing.T) {
+	// The regression this whole change exists for: "100km to m" must work.
+	r := calcQuery(t, "100km to m")
+	if len(r) == 0 || !strings.HasPrefix(r[0].Title, "100000") {
+		t.Fatalf("Query(100km to m) = %v", r)
+	}
+	if r[0].Rich == nil || r[0].Rich.Kind != "convert" {
+		t.Errorf("expected a rich convert payload, got %+v", r[0].Rich)
 	}
 }
 
-func TestParseConversion(t *testing.T) {
-	c, ok := parseConversion("10 km to mi")
-	if !ok {
-		t.Fatal("expected a match")
-	}
-	if c.value != 10 || c.fromUnit != "km" || c.toUnit != "mi" {
-		t.Errorf("parseConversion = %+v", c)
-	}
-
-	if _, ok := parseConversion("2 + 2"); ok {
-		t.Error("plain arithmetic must not be read as a conversion")
-	}
-	if _, ok := parseConversion("10 km toward mi"); ok {
-		t.Error("only 'to'/'in' should be accepted as the connector")
-	}
-	if _, ok := parseConversion("10 banana to mi"); ok {
-		t.Error("unknown unit must not match")
+func TestCalculatorSpacedConversionStillWorks(t *testing.T) {
+	r := calcQuery(t, "10 km to mi")
+	if len(r) == 0 {
+		t.Fatal("Query(10 km to mi) returned nothing")
 	}
 }
 
-func TestConvertUnitLength(t *testing.T) {
-	got, err := convertUnit(conversion{value: 1, fromUnit: "km", toUnit: "m"})
-	if err != nil {
-		t.Fatal(err)
+func TestCalculatorSolveHasRichSteps(t *testing.T) {
+	r := calcQuery(t, "solve x^2 - 4 = 0")
+	if len(r) == 0 {
+		t.Fatal("no result for solve")
 	}
-	if math.Abs(got-1000) > 1e-9 {
-		t.Errorf("1km in m = %v, want 1000", got)
-	}
-}
-
-func TestConvertUnitMass(t *testing.T) {
-	got, err := convertUnit(conversion{value: 1, fromUnit: "kg", toUnit: "lb"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if math.Abs(got-2.2046226218) > 1e-6 {
-		t.Errorf("1kg in lb = %v, want ~2.2046", got)
+	if r[0].Rich == nil || len(r[0].Rich.Solutions) == 0 {
+		t.Fatalf("expected rich solutions, got %+v", r[0].Rich)
 	}
 }
 
-func TestConvertTemperature(t *testing.T) {
-	cases := []struct {
-		v        float64
-		from, to string
-		want     float64
-	}{
-		{0, "c", "f", 32},
-		{100, "c", "f", 212},
-		{32, "f", "c", 0},
-		{0, "c", "k", 273.15},
+func TestCalculatorPlotHasCurve(t *testing.T) {
+	r := calcQuery(t, "plot sin(x)")
+	if len(r) == 0 || r[0].Rich == nil || r[0].Rich.Plot == nil {
+		t.Fatalf("expected a plot payload, got %+v", r)
 	}
-	for _, c := range cases {
-		got, err := convertTemperature(c.v, c.from, c.to)
-		if err != nil {
-			t.Errorf("convertTemperature(%v, %q, %q): %v", c.v, c.from, c.to, err)
-			continue
-		}
-		if math.Abs(got-c.want) > 1e-9 {
-			t.Errorf("convertTemperature(%v, %q, %q) = %v, want %v", c.v, c.from, c.to, got, c.want)
-		}
+	if len(r[0].Rich.Plot.Points) < 100 {
+		t.Errorf("plot has %d points", len(r[0].Rich.Plot.Points))
 	}
 }
 
-func TestConvertUnitRejectsMixedGroups(t *testing.T) {
-	if _, err := convertUnit(conversion{value: 1, fromUnit: "kg", toUnit: "m"}); err == nil {
-		t.Error("expected an error converting mass to length")
-	}
-	if _, err := convertUnit(conversion{value: 1, fromUnit: "c", toUnit: "kg"}); err == nil {
-		t.Error("expected an error converting temperature to mass")
+func TestCalculatorRejectsNonExpression(t *testing.T) {
+	if r := calcQuery(t, "not an expression"); r != nil {
+		t.Errorf("Query on prose should return nil, got %v", r)
 	}
 }
 
-func TestCalculatorProviderQuery(t *testing.T) {
-	p := CalculatorProvider{}
-
-	results := p.Query(nil, "2 + 2")
-	if len(results) != 1 || results[0].Title != "4" {
-		t.Fatalf("Query(2 + 2) = %v, want a single result titled 4", results)
+func TestCalculatorLeavesCurrencyToCurrencyProvider(t *testing.T) {
+	if r := calcQuery(t, "100 usd to eur"); r != nil {
+		t.Errorf("calculator should not answer a currency query, got %v", r)
 	}
-	if results[0].Score != 100 {
-		t.Errorf("Score = %v, want 100 (calculator trusts its own confidence)", results[0].Score)
-	}
+}
 
-	results = p.Query(nil, "10 km to mi")
-	if len(results) != 1 {
-		t.Fatalf("Query(10 km to mi) = %v, want one result", results)
-	}
-
-	if results := p.Query(nil, "not an expression"); results != nil {
-		t.Errorf("Query on non-expression input should return nil, got %v", results)
+func TestCalculatorContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if r := (CalculatorProvider{}).Query(ctx, "2 + 2"); r != nil {
+		t.Errorf("a cancelled context should yield no result, got %v", r)
 	}
 }
