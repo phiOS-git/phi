@@ -48,6 +48,16 @@ var Keys = map[string]bool{
 	"toggle.true-tone": true, // ambient-light-driven night shift instead of the clock profile, consumed at S-42 — distinct from toggle.night-mode, which is the feature's own on/off
 	"spotlight.size":   true, // "small" | "medium" | "large", consumed at S-43
 	"chroma.color":     true, // hex string for the static-colour override, consumed at S-46
+
+	// Added by Out-of-plan: settings-overhaul (batch D — the full wallpaper
+	// section). wallpaper.path already existed as "the active image"; the
+	// rest are the compositing parameters the shell's background layer
+	// reads. All scalars, same category as the toggles above.
+	"wallpaper.color":             true, // "#rrggbb" solid base — the visible layer when there is no image, or the image is not cover/stretch
+	"wallpaper.mode":              true, // "cover" | "contain" | "stretch" | "repeat"
+	"wallpaper.scale":             true, // float, image zoom for contain/repeat (ignored for cover/stretch)
+	"wallpaper.texture":           true, // "" | a phi wallpaper texture mode name
+	"wallpaper.texture-intensity": true, // 0-100
 }
 
 // Dir is $XDG_STATE_HOME/phi, or $HOME/.local/state/phi when XDG_STATE_HOME

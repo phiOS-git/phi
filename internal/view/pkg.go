@@ -26,6 +26,47 @@ func PkgCheck(result pkg.CheckResult) string {
 	return b.String()
 }
 
+// PkgState renders `phi pkg state` — one component per line, aligned.
+func PkgState(components []pkg.Component) string {
+	if len(components) == 0 {
+		return "no component versions could be read\n"
+	}
+	var b strings.Builder
+	tw := tabwriter.NewWriter(&b, 2, 4, 2, ' ', 0)
+	for _, c := range components {
+		fmt.Fprintf(tw, "%s\t%s\t(%s)\n", c.Name, c.Version, c.Source)
+	}
+	tw.Flush()
+	return b.String()
+}
+
+// PkgManager renders `phi pkg list --manager NAME`.
+func PkgManager(l pkg.ManagerListing) string {
+	var b strings.Builder
+	if !l.Implemented {
+		fmt.Fprintf(&b, "%s: %s\n", l.Manager, l.Note)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "%s (%d)\n", l.Manager, len(l.Entries))
+	if l.Note != "" {
+		fmt.Fprintf(&b, "  %s\n", l.Note)
+	}
+	if len(l.Entries) == 0 {
+		b.WriteString("  none\n")
+		return b.String()
+	}
+	tw := tabwriter.NewWriter(&b, 2, 4, 2, ' ', 0)
+	for _, e := range l.Entries {
+		if e.Version != "" {
+			fmt.Fprintf(tw, "  %s\t%s\n", e.Name, e.Version)
+		} else {
+			fmt.Fprintf(tw, "  %s\n", e.Name)
+		}
+	}
+	tw.Flush()
+	return b.String()
+}
+
 func pkgReport(entries []pkg.Entry, showUpdates bool) string {
 	var b strings.Builder
 	categories := []pkg.Category{pkg.CategoryT0, pkg.CategoryAUR, pkg.CategoryT4, pkg.CategoryPhiPackages}
