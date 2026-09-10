@@ -677,9 +677,14 @@ func RecentBlocked(ctx context.Context, limit int) ([]Blocked, error) {
 	}
 	cctx, cancel := context.WithTimeout(ctx, cmdTimeout)
 	defer cancel()
-	// Fixed argument vector so the sudoers drop-in can pin it exactly.
+	// Fixed argument vector so the sudoers drop-in can pin it exactly. The
+	// grep pattern is "phi-fw" without the trailing colon on purpose: a
+	// literal ':' in a sudoers command argument is a metacharacter that
+	// must be backslash-escaped, and an unescaped one is a hard parse error
+	// (`visudo -cf` rejects the whole file). "phi-fw" matches a superset;
+	// the exact "phi-fw:" filter below narrows it back down in-process.
 	cmd := exec.CommandContext(cctx, "sudo", "-n", "journalctl",
-		"-k", "--no-pager", "-o", "json", "-g", "phi-fw:", "-n", "200")
+		"-k", "--no-pager", "-o", "json", "-g", "phi-fw", "-n", "200")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the kernel log (sudoers drop-in installed? logging on?): %w", err)
