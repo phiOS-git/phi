@@ -11,6 +11,10 @@ every repository — **branch locally, only `main`/`dev` on the remote; only
 official Arch packages; the user owns package releases, an agent only tags;
 no secrets in a public repo.** They are not repeated here.
 
+When your work matches an entry in the workspace's `docs/TODO.md`, claim it
+with `[taken]` and report the result in `docs/VERIFICATION.md` — see *The
+TODO / VERIFICATION loop* in the workspace `AGENTS.md`.
+
 ## How this repo is built
 
 - **`cmd/phi`** is the entry point. **`internal/cli`** parses arguments,
