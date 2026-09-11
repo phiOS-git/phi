@@ -25,6 +25,64 @@ import (
 // by insertion order.
 const frecencyWeight = 15.0
 
+// providerTier ranks a whole category of result above or below another,
+// before any per-query score is even looked at — docs/TODO.md's own
+// complaint: "it has latest features appearing first (like the calculator)
+// but it does not make sense. Apps should be always first, non hidden
+// files second, math when obvious." Without this, CalculatorProvider's
+// flat Score of 100 (its own top confidence — matchWeight cannot judge a
+// numeric answer against the query that produced it, see
+// TestRankTrustsExplicitProviderScore) ties or beats a genuine exact-title
+// app match, which is the exact bug reported.
+//
+// Tiers are spaced 1000 apart: the largest possible per-query contribution
+// (matchWeight's 100 plus frecencyWeight's 15) cannot spill into the next
+// tier, so category always wins over match quality, and match quality
+// (plus frecency) still decides the order within a category.
+//
+// Windows are not named in the backlog entry but sit just under apps
+// anyway — query.go's own header already calls switching to an open
+// window "likely the most frequent launcher action on a tiling
+// compositor," which puts it beside launching, not beside a file search.
+// Categories the backlog entry did not name (system actions, ssh hosts,
+// zoxide, run-command) keep their previous relative order, placed below
+// math since each is a narrower, more deliberate action a query rarely
+// triggers by accident. Web search stays the fallback of last resort — it
+// already refuses to answer unless nothing else looked promising.
+const (
+	tierApps      = 5000.0
+	tierWindows   = 4000.0
+	tierFiles     = 3000.0
+	tierMath      = 2000.0
+	tierAction    = 1000.0
+	tierWebSearch = 0.0
+)
+
+var providerTiers = map[string]float64{
+	"application": tierApps,
+	"window":      tierWindows,
+	"file":        tierFiles,
+	"calculator":  tierMath,
+	"currency":    tierMath,
+	"system":      tierAction,
+	"ssh":         tierAction,
+	"directory":   tierAction,
+	"command":     tierAction,
+	"websearch":   tierWebSearch,
+}
+
+// providerTier defaults an unrecognised provider name to tierAction — the
+// same "deliberate, narrower action" band as the closed set above — rather
+// than to either extreme, so a future provider nobody updated this map for
+// degrades to a reasonable middle instead of silently dominating or
+// vanishing.
+func providerTier(provider string) float64 {
+	if t, ok := providerTiers[provider]; ok {
+		return t
+	}
+	return tierAction
+}
+
 func matchWeight(title, q string) float64 {
 	if q == "" {
 		return 0
@@ -80,6 +138,8 @@ func isSubsequence(title, needle string) bool {
 // answer, a system action matched by its own name) is trusted as-is and
 // only gets the frecency term added — matchWeight is for providers that
 // hand Rank a raw title to score against the query, which is most of them.
+// providerTier is then added on top of either, so the category always
+// dominates the ordering (see providerTier's own comment).
 func Rank(results []Result, q string, frecency *Frecency) []Result {
 	scored := make([]Result, 0, len(results))
 	for _, r := range results {
@@ -93,6 +153,7 @@ func Rank(results []Result, q string, frecency *Frecency) []Result {
 		if frecency != nil {
 			score += frecency.Score(r.ID) * frecencyWeight
 		}
+		score += providerTier(r.Provider)
 		r.Score = score
 		scored = append(scored, r)
 	}
