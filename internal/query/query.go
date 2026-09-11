@@ -68,7 +68,7 @@ const (
 	ActionActivateWindow = "activateWindow" // Data["address"]: focus an existing Hyprland window
 	ActionOpenURL        = "openURL"        // Data["url"]
 	ActionCopyText       = "copyText"       // Data["text"]: e.g. a calculator result
-	ActionSystem         = "system"         // Data["action"]: lock | suspend | logout
+	ActionSystem         = "system"         // Data["action"]: lock | suspend | hibernate | logout | reboot | shutdown
 	ActionChangeDir      = "changeDir"      // Data["path"]: open a terminal there
 	ActionPushView       = "pushView"       // Data["view"]: sub-view navigation (ADR 022)
 	// ActionLoading marks a transient result a provider could not answer
