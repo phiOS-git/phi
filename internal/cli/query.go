@@ -20,6 +20,10 @@ prints them, most relevant first. JSON when stdout is redirected (the
 shape phi-shell's Launcher parses); a plain list on a terminal, for
 testing ranking by hand.
 
+A phi verb typed on its own, without the leading "phi ", is recognised and
+run as one ("theme set dark" runs "phi theme set dark") — see the
+Commands list in "phi help" for the full verb set.
+
 The calculator understands arithmetic ("2+2*3", "sqrt(2)!", "2^10"),
 constants and functions, unit conversion in free form ("100km to m",
 "-40 C to F", "2 GiB to MB"), percentages ("20% of 150"), equations and
@@ -60,9 +64,22 @@ func runQuery(args []string, stdout, stderr io.Writer, styled bool) int {
 	q := strings.Join(args, " ")
 
 	frecency := loadFrecencyOrNil()
-	results := query.Run(context.Background(), query.Providers(frecency), q, frecency)
+	providers := query.Providers(frecency, phiVerbSet())
+	results := query.Run(context.Background(), providers, q, frecency)
 	fmt.Fprint(stdout, view.QueryResults(results, styled))
 	return 0
+}
+
+// phiVerbSet reduces view.Commands — the single source Help, ZshCompletion
+// and Man already render from — to the lookup set query.PhiCommandProvider
+// needs, so a verb added there is recognised in the launcher with nothing
+// else to keep in sync.
+func phiVerbSet() map[string]bool {
+	set := make(map[string]bool, len(view.Commands))
+	for _, c := range view.Commands {
+		set[c.Name] = true
+	}
+	return set
 }
 
 func runQueryRecord(args []string, stdout, stderr io.Writer) int {

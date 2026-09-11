@@ -102,13 +102,17 @@ const providerTimeout = 120 * time.Millisecond
 // Providers is the full provider set S-33 wires up. A function, not a
 // package-level slice: tests construct their own smaller sets directly
 // (see rank_test.go, calculator_test.go) rather than going through this,
-// so it has exactly one caller — internal/cli's query verb.
-func Providers(frecency *Frecency) []Provider {
+// so it has exactly one caller — internal/cli's query verb. phiVerbs is
+// PhiCommandProvider's recognised verb set, built by that caller from
+// view.Commands (see phicommand.go's own header for why it cannot be built
+// here instead) — nil or empty simply turns that provider into a no-op.
+func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 	return []Provider{
 		CalculatorProvider{},
 		CurrencyProvider{},
 		ApplicationsProvider{},
 		WindowsProvider{},
+		PhiCommandProvider{Verbs: phiVerbs},
 		CommandProvider{},
 		ZoxideProvider{},
 		SSHHostsProvider{},

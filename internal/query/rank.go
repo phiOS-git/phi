@@ -68,6 +68,7 @@ var providerTiers = map[string]float64{
 	"ssh":         tierAction,
 	"directory":   tierAction,
 	"command":     tierAction,
+	"phi":         tierAction,
 	"websearch":   tierWebSearch,
 }
 
