@@ -74,14 +74,41 @@ func TestRankFrecencyBreaksATie(t *testing.T) {
 // contract: its Title is the numeric answer, which will almost never
 // match the query text itself (matchWeight("4", "2+2") is 0), so a
 // provider that already knows its own confidence must be trusted, not
-// re-scored against a title that was never meant to be compared to q.
+// re-scored against a title that was never meant to be compared to q. The
+// provider's own tier (tierMath) still lands on top of that trusted score.
 func TestRankTrustsExplicitProviderScore(t *testing.T) {
 	results := []Result{
-		{ID: "calc", Title: "4", Score: 100},
+		{ID: "calc", Provider: "calculator", Title: "4", Score: 100},
 	}
 	ranked := Rank(results, "2+2", nil)
-	if len(ranked) != 1 || ranked[0].Score != 100 {
+	if len(ranked) != 1 || ranked[0].Score != 100+tierMath {
 		t.Fatalf("Rank did not trust an explicit provider score: got %v", ranked)
+	}
+}
+
+// TestRankOrdersByCategoryBeforeMatchQuality is the regression test for
+// docs/TODO.md's own complaint: "it has latest features appearing first
+// (like the calculator) but it does not make sense. Apps should be always
+// first, non hidden files second, math when obvious." A whole category
+// must outrank the next one even when its own match within that category
+// is the weakest possible, as long as it matched at all.
+func TestRankOrdersByCategoryBeforeMatchQuality(t *testing.T) {
+	results := []Result{
+		{ID: "calc", Provider: "calculator", Title: "4", Score: 100},        // math: top confidence
+		{ID: "file", Provider: "file", Title: "firefox.desktop", Score: 30}, // file: flat score
+		{ID: "app", Provider: "application", Title: "Firefox"},              // app: weakest match tier
+	}
+	// "fx" is only a subsequence of "Firefox" (matchWeight tier 20, the
+	// weakest non-zero tier — see TestMatchWeightTiers).
+	ranked := Rank(results, "fx", nil)
+	if len(ranked) != 3 {
+		t.Fatalf("Rank dropped a result: got %v", ranked)
+	}
+	want := []string{"app", "file", "calc"}
+	for i, id := range want {
+		if ranked[i].ID != id {
+			t.Fatalf("Rank did not order by category tier: got %v, want order %v", ranked, want)
+		}
 	}
 }
 
