@@ -112,6 +112,54 @@ func TestRankOrdersByCategoryBeforeMatchQuality(t *testing.T) {
 	}
 }
 
+// TestRankAppliesFullCategoryOrder covers docs/TODO.md's full category
+// list end to end: apps, HOME files, commands, phi commands, ask ai agent,
+// search web, math, conversion (search any file is skipped — no such
+// provider exists yet, see rank.go's own comment). Each Result's Title is
+// deliberately a poor match for q so category alone, not match quality,
+// has to carry the order.
+func TestRankAppliesFullCategoryOrder(t *testing.T) {
+	results := []Result{
+		{ID: "currency", Provider: "currency", Title: "9.14 zz-coin", Score: 100},
+		{ID: "calc", Provider: "calculator", Title: "zz42", Score: 100},
+		{ID: "websearch", Provider: "websearch", Title: "Search the web for \"zz\"", Score: 10},
+		{ID: "agent", Provider: "agent", Title: "Ask AI: \"zz\"", Score: 10},
+		{ID: "other", Provider: "ssh", Title: "some-zz-host"},
+		{ID: "phi", Provider: "phi", Title: "phi zz-verb"},
+		{ID: "command", Provider: "command", Title: "Run: zz"},
+		{ID: "file", Provider: "file", Title: "some-zz.txt"},
+		{ID: "app", Provider: "application", Title: "The zz App"},
+	}
+	ranked := Rank(results, "zz", nil)
+	want := []string{"app", "file", "command", "phi", "other", "agent", "websearch", "calc", "currency"}
+	if len(ranked) != len(want) {
+		t.Fatalf("Rank dropped results: got %v, want %d entries", ranked, len(want))
+	}
+	for i, id := range want {
+		if ranked[i].ID != id {
+			t.Fatalf("Rank did not apply the full category order: got %v, want order %v", ranked, want)
+		}
+	}
+}
+
+func TestAskAgentProviderRequiresTwoWords(t *testing.T) {
+	p := AskAgentProvider{}
+	if got := p.Query(nil, "single"); got != nil {
+		t.Fatalf("AskAgentProvider.Query(%q) = %v, want nil for a single word", "single", got)
+	}
+	got := p.Query(nil, "what time is it")
+	if len(got) != 1 {
+		t.Fatalf("AskAgentProvider.Query(%q) = %v, want one result", "what time is it", got)
+	}
+	r := got[0]
+	if r.Provider != "agent" || r.Action.Kind != ActionExecTerminal {
+		t.Fatalf("AskAgentProvider result malformed: %+v", r)
+	}
+	if r.Action.Data["command"] != "phi agent ask 'what time is it'" {
+		t.Fatalf("AskAgentProvider command = %q, want the query shell-quoted", r.Action.Data["command"])
+	}
+}
+
 func TestIsSubsequence(t *testing.T) {
 	if !isSubsequence("firefox", "fx") {
 		t.Error("expected fx to be a subsequence of firefox")
