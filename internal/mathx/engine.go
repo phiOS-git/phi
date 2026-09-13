@@ -184,13 +184,16 @@ func evalNumeric(raw string, n Node) (*Report, error) {
 	// Could not evaluate — if there is exactly one free variable and it is
 	// not actually a unit name (a bare "5 km" is the converter's job, not
 	// a plot of 5·km), the useful answer is a plot of it. Restricted to a
-	// single-character variable name (x, y, t, θ, …) — the launcher's own
+	// single-*character* variable name — one ASCII letter like x/y/t, or one
+	// literal Greek glyph like θ typed directly (the lexer's isIdentStart
+	// already accepts the Greek block as one rune each) — the launcher's own
 	// runner-ranking bug report (docs/TODO.md, phiOS-workspace) is that any
-	// ordinary word ("stea", "cd") was being read as an implicit variable
-	// and plotted, burying real app/command matches under a meaningless
-	// graph. A real one-letter unknown ("x", "y") is worth plotting
-	// unasked; a whole word is not — that always means the input was never
-	// meant as maths. An explicit `plot <expr>` still plots any variable
+	// ordinary word ("stea", "cd", and equally the spelled-out "theta") was
+	// being read as an implicit variable and plotted, burying real
+	// app/command matches under a meaningless graph. A real one-letter
+	// unknown is worth plotting unasked; a whole word is not — that always
+	// means the input was never meant as maths, spelled-out Greek letter
+	// names included. An explicit `plot <expr>` still plots any variable
 	// name, whatever its length: this guard is only for the implicit,
 	// nobody-asked-for-a-plot fallback.
 	fv := freeVars(n)
