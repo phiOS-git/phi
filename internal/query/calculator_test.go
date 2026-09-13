@@ -68,6 +68,22 @@ func TestCalculatorRejectsNonExpression(t *testing.T) {
 	}
 }
 
+func TestCalculatorRejectsBareWordAsVariable(t *testing.T) {
+	// docs/TODO.md (phiOS-workspace) runner-ranking bug: typing an app name
+	// like "steam" (or a fragment like "stea") into the launcher used to be
+	// read as an implicit one-variable function and plotted, so a
+	// meaningless graph outranked the real app match. A single letter
+	// ("x") is still a legitimate unlabelled unknown and keeps plotting.
+	for _, q := range []string{"stea", "steam", "cd"} {
+		if r := calcQuery(t, q); r != nil {
+			t.Errorf("Query(%q) should return nil (no implicit plot of a word), got %v", q, r)
+		}
+	}
+	if r := calcQuery(t, "x"); len(r) == 0 {
+		t.Error("Query(\"x\") should still plot a single-letter variable")
+	}
+}
+
 func TestCalculatorLeavesCurrencyToCurrencyProvider(t *testing.T) {
 	if r := calcQuery(t, "100 usd to eur"); r != nil {
 		t.Errorf("calculator should not answer a currency query, got %v", r)

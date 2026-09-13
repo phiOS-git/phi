@@ -219,6 +219,31 @@ func TestPlot(t *testing.T) {
 	}
 }
 
+// TestImplicitPlotRejectsWords guards docs/TODO.md's runner-ranking bug
+// report (phiOS-workspace): a bare word like "stea" or "cd" — typed while
+// searching the launcher for an app, not doing maths — was being read as a
+// one-variable function and silently plotted, so the calculator surfaced a
+// meaningless graph ahead of the app the user actually wanted. A single
+// letter ("x", "y") is still a legitimate unlabelled unknown and keeps
+// plotting; only the multi-letter, ordinary-word case is now rejected.
+func TestImplicitPlotRejectsWords(t *testing.T) {
+	for _, q := range []string{"stea", "cd", "theta", "steam"} {
+		if _, err := Evaluate(q); err == nil {
+			t.Errorf("Evaluate(%q) should fail (no bare-word implicit plot), got a result", q)
+		}
+	}
+}
+
+func TestImplicitPlotKeepsSingleLetterVariable(t *testing.T) {
+	r, err := Evaluate("x")
+	if err != nil {
+		t.Fatalf("Evaluate(\"x\"): %v", err)
+	}
+	if r.Kind != "plot" || r.Plot == nil {
+		t.Fatalf("Evaluate(\"x\") = %+v, want a plot", r)
+	}
+}
+
 func TestConversionBasics(t *testing.T) {
 	cases := []struct {
 		q    string
