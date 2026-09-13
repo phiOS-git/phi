@@ -40,48 +40,67 @@ const frecencyWeight = 15.0
 // tier, so category always wins over match quality, and match quality
 // (plus frecency) still decides the order within a category.
 //
-// Windows are not named in the backlog entry but sit just under apps
-// anyway — query.go's own header already calls switching to an open
-// window "likely the most frequent launcher action on a tiling
-// compositor," which puts it beside launching, not beside a file search.
-// Categories the backlog entry did not name (system actions, ssh hosts,
-// zoxide, run-command) keep their previous relative order, placed below
-// math since each is a narrower, more deliberate action a query rarely
-// triggers by accident. Web search stays the fallback of last resort — it
-// already refuses to answer unless nothing else looked promising.
+// The order below is docs/TODO.md's own full category list, verbatim:
+// apps, HOME files, commands, phi commands, search any file, ask ai agent,
+// search web, math, conversion — a deliberate flip from the previous
+// scheme, where math/currency outranked commands and web search. Two
+// categories the list names — "search any file" (broader than the
+// existing home-directory-only FilesProvider) and, at the time this tier
+// table was written, "ask ai agent" — had no provider yet; ask-ai-agent
+// has one now (AskAgentProvider, askagent.go) and keeps the list's tier;
+// "search any file" still doesn't exist, so its tier is intentionally not
+// reserved here — add it when that provider is built, immediately below
+// tierPhi.
+//
+// Windows, system actions, ssh hosts and zoxide directory jumps are not
+// named in the list. Windows sit just under apps, unchanged from before —
+// query.go's own header already calls switching to an open window "likely
+// the most frequent launcher action on a tiling compositor," which puts it
+// beside launching, not beside a file search. System/ssh/directory keep
+// their previous grouping with commands and phi verbs (all four are a
+// single deliberate, narrow action triggered by fairly exact query syntax)
+// rather than being stranded below math, which the previous comment's
+// "keep below math" convention would now put them at the very bottom of
+// the whole list — a much bigger demotion than the backlog entry asked
+// for.
 const (
-	tierApps      = 5000.0
-	tierWindows   = 4000.0
-	tierFiles     = 3000.0
-	tierMath      = 2000.0
-	tierAction    = 1000.0
-	tierWebSearch = 0.0
+	tierApps        = 9000.0
+	tierWindows     = 8000.0
+	tierFiles       = 7000.0
+	tierCommand     = 6000.0
+	tierPhi         = 5000.0
+	tierOtherAction = 4000.0 // system actions, ssh hosts, zoxide — see comment above
+	tierAskAgent    = 3000.0
+	tierWebSearch   = 2000.0
+	tierMath        = 1000.0
+	tierCurrency    = 0.0
 )
 
 var providerTiers = map[string]float64{
 	"application": tierApps,
 	"window":      tierWindows,
 	"file":        tierFiles,
-	"calculator":  tierMath,
-	"currency":    tierMath,
-	"system":      tierAction,
-	"ssh":         tierAction,
-	"directory":   tierAction,
-	"command":     tierAction,
-	"phi":         tierAction,
+	"command":     tierCommand,
+	"phi":         tierPhi,
+	"system":      tierOtherAction,
+	"ssh":         tierOtherAction,
+	"directory":   tierOtherAction,
+	"agent":       tierAskAgent,
 	"websearch":   tierWebSearch,
+	"calculator":  tierMath,
+	"currency":    tierCurrency,
 }
 
-// providerTier defaults an unrecognised provider name to tierAction — the
-// same "deliberate, narrower action" band as the closed set above — rather
-// than to either extreme, so a future provider nobody updated this map for
-// degrades to a reasonable middle instead of silently dominating or
-// vanishing.
+// providerTier defaults an unrecognised provider name to tierOtherAction —
+// the same "deliberate, narrower action" band used for the other unnamed
+// categories — rather than to either extreme, so a future provider nobody
+// updated this map for degrades to a reasonable middle instead of silently
+// dominating or vanishing.
 func providerTier(provider string) float64 {
 	if t, ok := providerTiers[provider]; ok {
 		return t
 	}
-	return tierAction
+	return tierOtherAction
 }
 
 func matchWeight(title, q string) float64 {
