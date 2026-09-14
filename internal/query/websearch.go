@@ -18,17 +18,28 @@ type WebSearchProvider struct{}
 func (WebSearchProvider) Name() string { return "websearch" }
 
 func (p WebSearchProvider) Query(_ context.Context, q string) []Result {
+	// docs/TODO.md's runner-bar prefix feature: "web <anything>" searches
+	// for exactly <anything>, not the literal text "web <anything>" — strip
+	// the keyword before it reaches the search URL.
+	term := q
+	if len(q) >= 4 && strings.EqualFold(q[:4], "web ") {
+		term = strings.TrimSpace(q[4:])
+	}
 	// A single short token is far more likely to be an application or a
 	// command than a real web query — require at least two words so this
 	// does not crowd out better matches on every keystroke of "fi" while
-	// typing "Firefox".
-	if len(strings.Fields(q)) < 2 {
+	// typing "Firefox". The explicit "web " prefix bypasses that guard: it
+	// is an unambiguous request to search, even for one word.
+	if term == q && len(strings.Fields(q)) < 2 {
+		return nil
+	}
+	if term == "" {
 		return nil
 	}
 	return []Result{{
-		ID: "websearch:" + q, Provider: p.Name(),
-		Title: "Search the web for \"" + q + "\"", Subtitle: q, Score: 10,
-		Action: Action{Kind: ActionOpenURL, Data: map[string]string{"url": webSearchURL(q)}},
+		ID: "websearch:" + term, Provider: p.Name(),
+		Title: "Search the web for \"" + term + "\"", Subtitle: term, Score: 10,
+		Action: Action{Kind: ActionOpenURL, Data: map[string]string{"url": webSearchURL(term)}},
 	}}
 }
 

@@ -87,6 +87,7 @@ var providerTiers = map[string]float64{
 	"directory":   tierOtherAction,
 	"agent":       tierAskAgent,
 	"websearch":   tierWebSearch,
+	"sitesearch":  tierWebSearch, // wiki/yt/arch/rddt — same band as the generic web search it sits beside
 	"calculator":  tierMath,
 	"currency":    tierCurrency,
 }

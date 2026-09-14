@@ -35,6 +35,17 @@ func (p CalculatorProvider) Query(ctx context.Context, q string) []Result {
 	if q == "" || len(q) > 512 {
 		return nil
 	}
+	// docs/TODO.md's runner-bar prefix feature: "math <expr>" is an
+	// explicit request to evaluate <expr>. "convert <expr>" needs no
+	// stripping here — mathx.ParseConversion already strips its own
+	// leading "convert " (reConvertLead, internal/mathx/convert.go). The
+	// q[5:] slice below is never empty when this matches: q was already
+	// trimmed above, so it cannot itself end in the space "math "'s last
+	// character requires, meaning at least one more character always
+	// follows it.
+	if len(q) >= 5 && strings.EqualFold(q[:5], "math ") {
+		q = strings.TrimSpace(q[5:])
+	}
 
 	type outcome struct {
 		results []Result

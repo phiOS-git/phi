@@ -26,6 +26,27 @@ func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
 	if q == "" {
 		return nil
 	}
+	// docs/TODO.md's runner-bar prefix feature: "app <name>" must match
+	// <name> against each entry's title, not the literal text "app <name>"
+	// — the unprefixed path below is untouched (every entry returned with
+	// Score left at its zero default, Rank's own matchWeight against the
+	// raw q does the filtering, exactly as before this feature). Once
+	// prefixed, this provider has to score entries itself instead: Rank's
+	// fallback would score against the UNSTRIPPED q, and matchWeight's
+	// subsequence check requires every rune of the needle to appear in
+	// order in the title — "app firefox" is not a subsequence of
+	// "Firefox" (no 'a' in it at all), so every entry would silently
+	// vanish rather than just rank as an imperfect match.
+	prefixed := false
+	term := q
+	if len(q) >= 4 && strings.EqualFold(q[:4], "app ") {
+		term = strings.TrimSpace(q[4:])
+		if term == "" {
+			return nil
+		}
+		prefixed = true
+	}
+
 	var out []Result
 	seen := map[string]bool{} // a user override in XDG_DATA_HOME shadows the same id in a system dir
 	for _, dir := range desktopEntryDirs() {
@@ -48,10 +69,18 @@ func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
 			if !ok || entry.noDisplay || !entry.isApplication {
 				continue
 			}
+			score := 0.0
+			if prefixed {
+				score = matchWeight(entry.name, term)
+				if score == 0 {
+					continue
+				}
+			}
 			seen[e.Name()] = true
 			out = append(out, Result{
 				ID: "app:" + e.Name(), Provider: p.Name(),
 				Title: entry.name, Subtitle: entry.execClean,
+				Score:  score,
 				Action: Action{Kind: ActionExec, Data: map[string]string{"command": entry.execClean}},
 			})
 		}

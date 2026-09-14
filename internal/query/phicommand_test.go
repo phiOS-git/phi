@@ -52,3 +52,38 @@ func TestPhiCommandProviderNilVerbsIsNoop(t *testing.T) {
 		t.Errorf("Query with no Verbs set = %v, want nil", results)
 	}
 }
+
+// docs/TODO.md: "phi prefixes in the runner bar don't seem to work" — this
+// provider used to only match the bare verb, never the literal "phi "
+// prefix (CommandProvider answered that text instead, at a lower tier).
+func TestPhiCommandProviderRecognisesPhiPrefix(t *testing.T) {
+	p := PhiCommandProvider{Verbs: testVerbs()}
+	results := p.Query(context.Background(), "phi theme set dark")
+	if len(results) != 1 {
+		t.Fatalf("Query(%q) = %v, want exactly one result", "phi theme set dark", results)
+	}
+	got := results[0]
+	if got.Title != "phi theme set dark" {
+		t.Errorf("Title = %q, want %q", got.Title, "phi theme set dark")
+	}
+	if got.ID != "phi:theme set dark" {
+		t.Errorf("ID = %q, want the same ID the bare-verb form produces, so frecency treats them as one command", got.ID)
+	}
+}
+
+func TestPhiCommandProviderPhiPrefixCaseInsensitive(t *testing.T) {
+	p := PhiCommandProvider{Verbs: testVerbs()}
+	results := p.Query(context.Background(), "PHI theme set dark")
+	if len(results) != 1 || results[0].Action.Data["command"] != "phi theme set dark" {
+		t.Fatalf("Query(%q) = %v, want a match", "PHI theme set dark", results)
+	}
+}
+
+func TestPhiCommandProviderIgnoresWordStartingWithPhi(t *testing.T) {
+	// "phiwhatever" must not be misread as the prefix "phi " + "whatever" —
+	// the prefix check requires the separating space.
+	p := PhiCommandProvider{Verbs: testVerbs()}
+	if results := p.Query(context.Background(), "phidoctor"); results != nil {
+		t.Errorf("Query(%q) = %v, want nil — \"phidoctor\" is not \"phi \" + a verb", "phidoctor", results)
+	}
+}

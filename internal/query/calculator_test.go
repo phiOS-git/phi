@@ -97,3 +97,29 @@ func TestCalculatorContextCancel(t *testing.T) {
 		t.Errorf("a cancelled context should yield no result, got %v", r)
 	}
 }
+
+// docs/TODO.md's runner-bar prefix feature: "math 2+2" must strip the
+// keyword and evaluate "2+2" — without this, "math " is unparseable
+// leading text and Evaluate returns an error.
+func TestCalculatorMathPrefix(t *testing.T) {
+	r := calcQuery(t, "math 2+2")
+	if len(r) != 1 || r[0].Title != "4" {
+		t.Fatalf("Query(%q) = %v, want a single result titled 4", "math 2+2", r)
+	}
+	if r[0].ID != "calc:2+2" {
+		t.Errorf("ID = %q, want the same ID the unprefixed form produces", r[0].ID)
+	}
+}
+
+func TestCalculatorMathPrefixCaseInsensitive(t *testing.T) {
+	r := calcQuery(t, "MATH 2+2")
+	if len(r) != 1 || r[0].Title != "4" {
+		t.Fatalf("Query(%q) = %v, want a single result titled 4", "MATH 2+2", r)
+	}
+}
+
+func TestCalculatorMathPrefixAlone(t *testing.T) {
+	if r := calcQuery(t, "math "); r != nil {
+		t.Errorf("Query(%q) = %v, want nil for the keyword with nothing after it", "math ", r)
+	}
+}

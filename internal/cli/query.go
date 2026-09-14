@@ -10,7 +10,7 @@ import (
 	"phi/internal/view"
 )
 
-const queryUsage = `usage: phi query <text>
+const queryUsage = `usage: phi query [--prefix <key>] <text>
        phi query record <id>
 
 Ranks launcher results for <text> across every provider (applications,
@@ -23,6 +23,13 @@ testing ranking by hand.
 A phi verb typed on its own, without the leading "phi ", is recognised and
 run as one ("theme set dark" runs "phi theme set dark") — see the
 Commands list in "phi help" for the full verb set.
+
+A leading keyword ("web ", "phi ", "wiki ", ...) in <text> boosts that
+category to the top, ranking still applied to everything else. --prefix
+<key> additionally restricts the results to that one category — phi-
+shell's Launcher sends this once the user has pressed Tab to "lock" a
+prefix; <text> is unchanged either way, keyword included. See
+internal/query/query.go's prefixProviders for the full keyword list.
 
 The calculator understands arithmetic ("2+2*3", "sqrt(2)!", "2^10"),
 constants and functions, unit conversion in free form ("100km to m",
@@ -61,11 +68,21 @@ func runQuery(args []string, stdout, stderr io.Writer, styled bool) int {
 		return runQueryRefreshCurrency(args[1:], stderr)
 	}
 
+	lockedPrefix := ""
+	if args[0] == "--prefix" {
+		if len(args) < 2 {
+			fmt.Fprint(stderr, queryUsage)
+			return 1
+		}
+		lockedPrefix = args[1]
+		args = args[2:]
+	}
+
 	q := strings.Join(args, " ")
 
 	frecency := loadFrecencyOrNil()
 	providers := query.Providers(frecency, phiVerbSet())
-	results := query.Run(context.Background(), providers, q, frecency)
+	results := query.Run(context.Background(), providers, q, frecency, lockedPrefix)
 	fmt.Fprint(stdout, view.QueryResults(results, styled))
 	return 0
 }

@@ -71,6 +71,12 @@ type FilesProvider struct{}
 func (FilesProvider) Name() string { return "file" }
 
 func (p FilesProvider) Query(ctx context.Context, q string) []Result {
+	// docs/TODO.md's runner-bar prefix feature: "file <name>" searches for
+	// exactly <name> — without this, fd would search for a file literally
+	// named "file <name>", almost never a real match.
+	if len(q) >= 5 && strings.EqualFold(q[:5], "file ") {
+		q = strings.TrimSpace(q[5:])
+	}
 	// Two characters minimum: fd across the whole home directory on every
 	// single keystroke of a one-letter query is exactly the kind of
 	// per-query cost providerTimeout exists to bound, and a one-character

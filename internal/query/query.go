@@ -29,6 +29,7 @@ package query
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -121,14 +122,84 @@ func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 		SystemActionsProvider{},
 		AskAgentProvider{},
 		TimerProvider{},
+		SiteSearchProvider{},
 	}
+}
+
+// prefixProviders maps a runner-bar prefix keyword (docs/TODO.md: "Add
+// prefix feature to the runner bar... writing 'web <anything>' will
+// automatically set the 'search on web' first") to the provider Name()(s)
+// it routes to. This map only decides ROUTING; the actual keyword parsing
+// stays inside each named provider (ADR 018: providers, not this layer,
+// own their own syntax) — phicommand.go, websearch.go, command.go and
+// calculator.go each already strip their own leading keyword before
+// matching, and sitesearch.go matches its four keywords itself. "convert"
+// needs no entry of its own here beyond routing to "calculator": its
+// keyword-stripping already existed before this feature, inside
+// mathx.ParseConversion.
+var prefixProviders = map[string][]string{
+	"web":     {"websearch"},
+	"convert": {"calculator"},
+	"math":    {"calculator"},
+	"ask":     {"agent"},
+	"file":    {"file"},
+	"app":     {"application"},
+	"run":     {"command"},
+	"phi":     {"phi"},
+	"wiki":    {"sitesearch"},
+	"yt":      {"sitesearch"},
+	"arch":    {"sitesearch"},
+	"rddt":    {"sitesearch"},
+}
+
+// detectPrefix reports the known prefix keyword leading q, only once
+// there is at least one more word after it — "web" alone is not yet a
+// request to search, matching every routed provider's own "keyword +
+// space" convention.
+func detectPrefix(q string) string {
+	fields := strings.Fields(q)
+	if len(fields) < 2 {
+		return ""
+	}
+	if key := strings.ToLower(fields[0]); prefixProviders[key] != nil {
+		return key
+	}
+	return ""
 }
 
 // Run executes every provider concurrently, each bounded by
 // providerTimeout, then merges and ranks the combined results. frecency
 // may be nil — Rank simply skips the frecency term for every candidate,
 // which is what a first-run machine with no history yet should do anyway.
-func Run(ctx context.Context, providers []Provider, q string, frecency *Frecency) []Result {
+//
+// lockedPrefix is the runner-bar prefix feature's "locked" state (Tab
+// pressed on a matched prefix, phi-shell's Launcher.qml): when it names a
+// known prefix, only the provider(s) it routes to run at all — "while a
+// prefix word is selected, the only results shown will be determined by
+// the prefix" (docs/TODO.md). q is passed through unchanged either way,
+// keyword included, so the routed provider's own keyword-stripping still
+// applies; there is deliberately no separate "stripped" query shape, one
+// code path covers both the locked and unlocked cases below. An unknown
+// or empty lockedPrefix runs every provider, unfiltered, exactly as
+// before this feature.
+func Run(ctx context.Context, providers []Provider, q string, frecency *Frecency, lockedPrefix string) []Result {
+	active := providers
+	if names, ok := prefixProviders[lockedPrefix]; ok {
+		active = filterProviders(providers, names)
+	}
+
+	all := runAndRank(ctx, active, q, frecency)
+
+	if lockedPrefix == "" {
+		if key := detectPrefix(q); key != "" {
+			all = boostProviders(all, prefixProviders[key])
+		}
+	}
+
+	return all
+}
+
+func runAndRank(ctx context.Context, providers []Provider, q string, frecency *Frecency) []Result {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var all []Result
@@ -148,4 +219,40 @@ func Run(ctx context.Context, providers []Provider, q string, frecency *Frecency
 	wg.Wait()
 
 	return Rank(all, q, frecency)
+}
+
+func filterProviders(providers []Provider, names []string) []Provider {
+	keep := make(map[string]bool, len(names))
+	for _, n := range names {
+		keep[n] = true
+	}
+	out := make([]Provider, 0, len(names))
+	for _, p := range providers {
+		if keep[p.Name()] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// boostProviders moves every result from the named provider(s) to the
+// front of an already-ranked list, preserving relative order within each
+// partition — "automatically set it first, but still perform the rest of
+// the ranking" (docs/TODO.md): everything else keeps its normal
+// tier/score order, only the matched category moves up.
+func boostProviders(ranked []Result, names []string) []Result {
+	keep := make(map[string]bool, len(names))
+	for _, n := range names {
+		keep[n] = true
+	}
+	boosted := make([]Result, 0, len(ranked))
+	rest := make([]Result, 0, len(ranked))
+	for _, r := range ranked {
+		if keep[r.Provider] {
+			boosted = append(boosted, r)
+		} else {
+			rest = append(rest, r)
+		}
+	}
+	return append(boosted, rest...)
 }
