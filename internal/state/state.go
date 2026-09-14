@@ -58,6 +58,15 @@ var Keys = map[string]bool{
 	"wallpaper.scale":             true, // float, image zoom for contain/repeat (ignored for cover/stretch)
 	"wallpaper.texture":           true, // "" | a phi wallpaper texture mode name
 	"wallpaper.texture-intensity": true, // 0-100
+
+	// docs/TODO.md: "add option for automated night mode (automatic time
+	// at nighttime or manual hours range), with settings" — whether
+	// toggle.night-mode is flipped by hand or on a clock, and the window
+	// used when it's on a clock. Scalars, same category as the toggles
+	// and nightmode.temp above.
+	"nightmode.schedule":       true, // "off" | "auto" | "custom"
+	"nightmode.schedule-start": true, // hour 0-23, start of the "custom" window
+	"nightmode.schedule-end":   true, // hour 0-23, end of the "custom" window
 }
 
 // Dir is $XDG_STATE_HOME/phi, or $HOME/.local/state/phi when XDG_STATE_HOME
