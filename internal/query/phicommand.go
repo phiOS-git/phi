@@ -25,13 +25,25 @@ type PhiCommandProvider struct {
 func (PhiCommandProvider) Name() string { return "phi" }
 
 func (p PhiCommandProvider) Query(_ context.Context, q string) []Result {
-	fields := strings.Fields(q)
+	// docs/TODO.md's runner-bar prefix feature: typing the literal word
+	// "phi" first (as its own prefix, "phi theme set dark") must work
+	// exactly like typing the bare verb ("theme set dark") — this provider
+	// was the reported bug, since it only ever matched the bare form.
+	// CommandProvider still answers the literal "phi ..." text too (it
+	// resolves via exec.LookPath like any other binary), at a lower tier;
+	// this makes the same input resolve here as well, at the tier meant
+	// for it.
+	rest := q
+	if len(q) >= 4 && strings.EqualFold(q[:4], "phi ") {
+		rest = strings.TrimSpace(q[4:])
+	}
+	fields := strings.Fields(rest)
 	if len(fields) == 0 || len(p.Verbs) == 0 || !p.Verbs[strings.ToLower(fields[0])] {
 		return nil
 	}
-	command := "phi " + q
+	command := "phi " + rest
 	return []Result{{
-		ID: "phi:" + q, Provider: p.Name(),
+		ID: "phi:" + rest, Provider: p.Name(),
 		Title: command, Subtitle: "run phi command",
 		Score:  90, // trusted as-is, same confidence as CommandProvider's own match
 		Action: Action{Kind: ActionExecTerminal, Data: map[string]string{"command": command}},

@@ -21,6 +21,24 @@ type CommandProvider struct{}
 func (CommandProvider) Name() string { return "command" }
 
 func (p CommandProvider) Query(_ context.Context, q string) []Result {
+	// docs/TODO.md's runner-bar prefix feature: "run <anything>" is an
+	// explicit request to run <anything> as a shell command — it bypasses
+	// the exec.LookPath gate below, since the whole point of the prefix is
+	// to force this provider's answer even when the first word alone can't
+	// be confirmed to resolve on PATH (it may need the rest of the line,
+	// e.g. a shell builtin or an alias this process doesn't expand).
+	if len(q) >= 4 && strings.EqualFold(q[:4], "run ") {
+		cmd := strings.TrimSpace(q[4:])
+		if cmd == "" {
+			return nil
+		}
+		return []Result{{
+			ID: "command:" + cmd, Provider: p.Name(),
+			Title: "Run: " + cmd, Subtitle: "shell command", Score: 90,
+			Action: Action{Kind: ActionExecTerminal, Data: map[string]string{"command": cmd}},
+		}}
+	}
+
 	fields := strings.Fields(q)
 	if len(fields) < 2 {
 		return nil
