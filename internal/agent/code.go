@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -35,6 +36,10 @@ func RunCode(cfg CodeConfig) (string, error) {
 	abs, err := ValidateCodeDir(cfg.Dir)
 	if err != nil {
 		return "", fmt.Errorf("refusing to open %q: %w", cfg.Dir, err)
+	}
+
+	if err := checkA2Services(); err != nil {
+		return "", err
 	}
 
 	launcher, err := exec.LookPath(containLauncher)
@@ -116,3 +121,33 @@ func ReconcileActiveSessions() error {
 }
 
 var errNoWorkdir = errors.New("phi agent code: needs a directory")
+
+// a2SupportUnits are the systemd user services A2's containment needs
+// already running before it starts: phi-agent-contain bind-mounts the net/
+// bridge dir (S-72) as-is and never waits for it, so an A2 launch with any
+// of these down does not fail closed at the mount — it starts, then fails
+// deep inside the container with a bare `socat: No such file or directory`
+// connecting to proxy.sock, which reads as a broken feature rather than
+// "start these services first." Checking here, before the exec, turns that
+// into one clear message naming exactly what to start.
+var a2SupportUnits = []string{
+	"phi-agent-broker@a2.service",
+	"phi-agent-proxy.service",
+	"phi-agent-net-bridge.service",
+}
+
+// checkA2Services fails closed, before RunCode ever execs into the
+// containment, when any of a2SupportUnits is not active.
+func checkA2Services() error {
+	var down []string
+	for _, u := range a2SupportUnits {
+		if !unitActive(u) {
+			down = append(down, u)
+		}
+	}
+	if len(down) == 0 {
+		return nil
+	}
+	return fmt.Errorf("A2 support service(s) not running: %s — start them first: systemctl --user start %s",
+		strings.Join(down, ", "), strings.Join(down, " "))
+}

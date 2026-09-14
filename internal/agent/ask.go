@@ -95,6 +95,9 @@ func Ask(ctx context.Context, cfg AskConfig, prompt string, w io.Writer) error {
 
 	text := extractAssistantText(reply)
 	if text == "" {
+		if errMsg := extractAssistantError(reply); errMsg != "" {
+			return fmt.Errorf("agent reply failed: %s", errMsg)
+		}
 		return fmt.Errorf("no text in the reply: %s", truncate(reply, 300))
 	}
 	_, err = io.WriteString(w, text)
@@ -159,6 +162,32 @@ func extractAssistantText(data []byte) string {
 		return strings.TrimSpace(b.String())
 	}
 	return ""
+}
+
+// extractAssistantError pulls a human-readable message out of an opencode
+// message response whose turn failed upstream (server.txt: the message's
+// `info.error`, populated with `parts: []` when the provider rejects the
+// request — e.g. a billing or auth failure at the provider, not a phiOS
+// bug). Prefers the provider's own message text; falls back to the error's
+// name when the provider gave no message.
+func extractAssistantError(data []byte) string {
+	var withInfo struct {
+		Info struct {
+			Error struct {
+				Name string `json:"name"`
+				Data struct {
+					Message string `json:"message"`
+				} `json:"data"`
+			} `json:"error"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(data, &withInfo); err != nil {
+		return ""
+	}
+	if m := strings.TrimSpace(withInfo.Info.Error.Data.Message); m != "" {
+		return m
+	}
+	return strings.TrimSpace(withInfo.Info.Error.Name)
 }
 
 func truncate(b []byte, n int) string {
