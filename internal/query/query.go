@@ -120,6 +120,7 @@ func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 		FilesProvider{},
 		SystemActionsProvider{},
 		AskAgentProvider{},
+		TimerProvider{},
 	}
 }
 
