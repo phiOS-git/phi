@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -12,8 +13,9 @@ import (
 const fanUsage = `usage: phi fan <verb>
 
 Verbs:
-  status         every PWM-controllable fan channel found under
-                 /sys/class/hwmon, its current duty cycle and enable mode
+  status [--json]
+         every PWM-controllable fan channel found under
+         /sys/class/hwmon, its current duty cycle and enable mode
   list           the four profiles: auto, silent, default, heavy
   set PROFILE    apply PROFILE to every discovered channel — needs
                  profiles/*/system/etc/sudoers.d/49-phi-fan installed
@@ -33,10 +35,21 @@ func runFan(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "status":
+		asJSON := false
+		for _, a := range args[1:] {
+			if a == "--json" {
+				asJSON = true
+			}
+		}
 		st, err := fan.GetStatus()
 		if err != nil {
 			fmt.Fprintf(stderr, "%s: fan: %v\n", progName, err)
 			return 1
+		}
+		if asJSON {
+			b, _ := json.Marshal(st)
+			fmt.Fprintln(stdout, string(b))
+			return 0
 		}
 		fmt.Fprint(stdout, view.FanStatus(st))
 		return 0
