@@ -38,6 +38,7 @@ var Commands = []Command{
 	{"doctor", "disk, systemd, dotfiles drift, SMART, services, packages"},
 	{"query", "rank launcher results (applications, windows, calculator, ...)"},
 	{"pkg", "list installed packages by category (T0/AUR/T4/phi-packages)"},
+	{"fan", "PWM fan control (status, list, set) — needs a real hwmon channel"},
 	{"update", "snapshot, pacman -Syu, regenerate themed configs (interactive)"},
 	{"agent", "AI agent subsystem: broker, mcp, ask, project (phios-agente.md)"},
 }

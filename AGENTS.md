@@ -3,7 +3,7 @@
 Go, dependency-free (`go.mod` names the module `phi`, never imported
 elsewhere). One entry point for the whole system: `theme`, `state`,
 `doctor`, `pkg`, `vpn`, `firewall`, `wallpaper`, `query`, `update`,
-`agent`, plus `help` / `completion zsh` / `man`.
+`agent`, `fan`, plus `help` / `completion zsh` / `man`.
 
 Part of the phiOS workspace. The workspace `AGENTS.md` (one level up, or in
 `docs/archive/` of a standalone clone) carries the rules that apply to
