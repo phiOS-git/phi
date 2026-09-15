@@ -67,6 +67,18 @@ var Keys = map[string]bool{
 	"nightmode.schedule":       true, // "off" | "auto" | "custom"
 	"nightmode.schedule-start": true, // hour 0-23, start of the "custom" window
 	"nightmode.schedule-end":   true, // hour 0-23, end of the "custom" window
+
+	// rework.md: "the settings should allow an 'auto' theme option, where
+	// it changes from dark to light based on the time of day." Same shape
+	// as nightmode.schedule above (off/auto/custom + a custom hour window)
+	// — deliberately mirrored rather than inventing a second convention for
+	// the same kind of scalar. "auto" reads as "light during daylight
+	// hours, dark otherwise"; the exact daylight source (fixed hours vs.
+	// something location-aware) is the shell's own concern, not this
+	// file's — phi only stores the toggle and the custom-window scalars.
+	"theme.schedule":       true, // "off" | "auto" | "custom"
+	"theme.schedule-start": true, // hour 0-23, dark variant starts
+	"theme.schedule-end":   true, // hour 0-23, light variant starts
 }
 
 // Dir is $XDG_STATE_HOME/phi, or $HOME/.local/state/phi when XDG_STATE_HOME
