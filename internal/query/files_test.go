@@ -34,13 +34,15 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
-// TestOpenCommandUsesImvForImages guards docs/TODO.md's report that opening
-// an image flashed a terminal window instead of persisting: an image result
-// must go through the installed, explicitly-classed imv viewer, never the
-// unmanaged xdg-open resolution this repository does not configure.
-func TestOpenCommandUsesImvForImages(t *testing.T) {
+// TestOpenCommandUsesImageWindowForImages guards docs/TODO.md's report that
+// opening an image flashed a terminal window instead of persisting: an
+// image result must go through phi-shell's own native image window (the
+// interface rework replaced the earlier explicitly-classed imv viewer with
+// this), never the unmanaged xdg-open resolution this repository does not
+// configure.
+func TestOpenCommandUsesImageWindowForImages(t *testing.T) {
 	cases := map[string]string{
-		"/home/user/Pictures/holiday.jpg": "imv -i phios-imv '/home/user/Pictures/holiday.jpg'",
+		"/home/user/Pictures/holiday.jpg": "qs -p ~/.config/quickshell/phi ipc call image open '/home/user/Pictures/holiday.jpg'",
 		"/home/user/Documents/report.pdf": "xdg-open '/home/user/Documents/report.pdf'",
 	}
 	for path, want := range cases {

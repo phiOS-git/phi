@@ -22,22 +22,25 @@ import (
 // output needs no such guess.
 const filesMaxResults = 8
 
-// phiosImvAppID is passed to imv's own "-i" flag so the window it opens has
-// a known, fixed class regardless of imv's undocumented default — matching
-// this project's existing "phios-btop" precedent for reliably targeting a
-// CLI-adjacent app's window from a Hyprland window rule
-// (phios-dotfiles' hyprland.lua.tmpl).
-const phiosImvAppID = "phios-imv"
-
-// imageExtensions are the file types opened directly with imv (installed by
-// every desktop profile, profiles/desktop/packages.txt) instead of through
-// xdg-open. xdg-open depends on a mimeapps.list default association that
-// this repository does not ship or manage — nothing here configures one —
-// so its actual behaviour is whatever the live machine happens to resolve,
-// which is what let it silently misbehave (docs/TODO.md: a terminal window
-// flashing open and closing). Naming the real, installed viewer explicitly
-// removes that guesswork for the one file type this launcher is asked to
-// treat specially.
+// imageExtensions are the file types opened through phi-shell's own native
+// floating image window (Images/ImageWindow.qml, interface rework) instead
+// of through xdg-open. xdg-open depends on a mimeapps.list default
+// association that this repository does not ship or manage — nothing here
+// configures one — so its actual behaviour is whatever the live machine
+// happens to resolve, which is what let it silently misbehave (docs/
+// TODO.md: a terminal window flashing open and closing). Naming the real
+// target explicitly removes that guesswork for the one file type this
+// launcher is asked to treat specially.
+//
+// Previously opened via a bare `imv -i phios-imv`, explicitly classed so
+// hyprland.lua.tmpl's own window rule could float it — replaced once
+// phi-shell grew a real native image surface (rework.md: "images should be
+// opened in floating mode, in a window with a 4px border and a bottom area
+// containing the name of the file... A reference can be seen in the file
+// 'references/floating-panels-reference.JPG'"), which also fixes a real
+// reported bug the external-imv approach had (the window losing focus and
+// closing) by construction — a phi-shell-owned surface has no second
+// process and no window-rule-matching race to lose that focus to.
 var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
 	".bmp": true, ".webp": true, ".tiff": true, ".tif": true,
@@ -47,12 +50,14 @@ func isImageFile(path string) bool {
 	return imageExtensions[strings.ToLower(filepath.Ext(path))]
 }
 
-// openCommand is the shell command that opens path: imv, explicitly classed,
-// for an image; xdg-open for everything else. Both arguments are quoted —
-// see shellQuote.
+// openCommand is the shell command that opens path: phi-shell's own IPC
+// target for an image (the same `qs -p ~/.config/quickshell/phi ipc call
+// <target> <fn> ...` shape this codebase already uses elsewhere, e.g.
+// internal/query/timer.go's "timer add"/"timer addAlarm" calls); xdg-open
+// for everything else. Both arguments are quoted — see shellQuote.
 func openCommand(path string) string {
 	if isImageFile(path) {
-		return "imv -i " + phiosImvAppID + " " + shellQuote(path)
+		return "qs -p ~/.config/quickshell/phi ipc call image open " + shellQuote(path)
 	}
 	return "xdg-open " + shellQuote(path)
 }
