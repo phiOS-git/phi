@@ -74,6 +74,9 @@ func Run(args []string, stdout, stderr io.Writer, styled bool) int {
 	case "pkg":
 		return runPkg(args[1:], stdout, stderr)
 
+	case "fan":
+		return runFan(args[1:], stdout, stderr)
+
 	case "update":
 		return runUpdate(args[1:], stdout, stderr)
 
