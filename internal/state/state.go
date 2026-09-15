@@ -79,6 +79,11 @@ var Keys = map[string]bool{
 	"theme.schedule":       true, // "off" | "auto" | "custom"
 	"theme.schedule-start": true, // hour 0-23, dark variant starts
 	"theme.schedule-end":   true, // hour 0-23, light variant starts
+
+	// rework-issues.md "New requests" 1 and 16. Both scalars, same
+	// category as every toggle/value above.
+	"bar.battery-percent": true, // "true" | "false" — show the numeric charge next to the battery bar icon
+	"terminal.padding":    true, // integer px, kitty's own window_padding_width — default 40 per the request, user-editable
 }
 
 // Dir is $XDG_STATE_HOME/phi, or $HOME/.local/state/phi when XDG_STATE_HOME
