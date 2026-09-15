@@ -412,6 +412,21 @@ func (m *Model) SetActiveProject(name string) error {
 	return os.WriteFile(p, []byte(name+"\n"), 0o644)
 }
 
+// ClearActiveProject removes the marker, returning to the unfiled/global
+// chat scope ActiveProject() already documents as "" — the counterpart to
+// SetActiveProject, since nothing else in this model could ever reach that
+// state again once a project had been used.
+func (m *Model) ClearActiveProject() error {
+	p, err := activeMarkerPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // ProjectInstructions returns progetto.md for a project ("" if absent).
 func (m *Model) ProjectInstructions(project string) (string, error) {
 	s, err := readFileString(filepath.Join(m.projectDir(project), "progetto.md"))

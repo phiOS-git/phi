@@ -25,7 +25,8 @@ Verbs:
                     migrates personalita/<name>.md -> personalita/<name>/prompt.md.
   project           projects and their structured metadata (project.json):
                     list | current | show NAME | new NAME [flags] | set NAME [flags]
-                    | use NAME [--no-restart] | folder add|remove NAME PATH
+                    | use NAME [--no-restart] | use --none [--no-restart]
+                    | folder add|remove NAME PATH
   personality       personalities, editable from the panel (delta D-08):
                     list | show NAME | new NAME [--from-file F] | write NAME --from-file F
                     | rename OLD NEW | delete NAME
@@ -320,21 +321,33 @@ func runAgentProject(args []string, stdout, stderr io.Writer, styled bool) int {
 
 	case "use":
 		noRestart := false
+		none := false
 		var name string
 		for _, a := range args {
 			if a == "--no-restart" {
 				noRestart = true
 				continue
 			}
+			if a == "--none" {
+				none = true
+				continue
+			}
 			name = a
 		}
-		if name == "" {
-			return fail(fmt.Errorf("use needs a name"))
+		if none {
+			if err := m.ClearActiveProject(); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintln(stdout, "active project: (none)")
+		} else {
+			if name == "" {
+				return fail(fmt.Errorf("use needs a name (or --none to return to unfiled chat)"))
+			}
+			if err := m.SetActiveProject(name); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintf(stdout, "active project: %s\n", name)
 		}
-		if err := m.SetActiveProject(name); err != nil {
-			return fail(err)
-		}
-		fmt.Fprintf(stdout, "active project: %s\n", name)
 		if noRestart {
 			return 0
 		}
