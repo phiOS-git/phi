@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"phi/internal/state"
 	"phi/internal/tokens"
 )
 
@@ -85,6 +86,18 @@ func Set(root, variant string, dryRun bool) (SetResult, error) {
 	tk, err := tokens.Load(root, variant)
 	if err != nil {
 		return SetResult{}, err
+	}
+	// rework-issues.md "New requests" item 16: "increase the padding of
+	// the terminal windows to 40px (make it customisable in the
+	// settings)" — design/tokens.common.sh's PHI_TERM_PADDING is the
+	// design DEFAULT (bumped to 40 there), but a value the user actually
+	// set from the Settings panel (phi state's terminal.padding, written
+	// by phi-shell) must survive every later `phi theme set`/variant
+	// switch, not get silently overwritten by that default the next time
+	// this runs — the same "user override always wins over the design
+	// default" contract every other `phi state`-backed value already has.
+	if v, ok, err := state.Get("terminal.padding"); err == nil && ok && v != "" {
+		tk["PHI_TERM_PADDING"] = v
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
