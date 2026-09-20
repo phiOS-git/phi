@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// Error is the one error type the whole package returns, so a caller can
-// always render a position if it has one.
+// Error is the package's sole error type, carrying position.
 type Error struct {
 	Msg string
 	Pos int
@@ -18,8 +17,7 @@ func (e *Error) Error() string { return e.Msg }
 
 func errf(format string, a ...any) error { return &Error{Msg: fmt.Sprintf(format, a...)} }
 
-// parseFloatLoose accepts what strconv.ParseFloat does plus a bare
-// leading dot (".5").
+// parseFloatLoose accepts bare leading dot (".5") in addition to strconv.ParseFloat.
 func parseFloatLoose(s string) (float64, error) {
 	if strings.HasPrefix(s, ".") {
 		s = "0" + s

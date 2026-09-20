@@ -7,24 +7,9 @@ import (
 	"phi/internal/mathx"
 )
 
-// CalculatorProvider answers arithmetic, symbolic math and unit conversions
-// entirely locally. The engine is internal/mathx; this file is the thin
-// launcher adapter — it decides conversion-vs-calculation, bounds the work by
-// the query context, and maps a mathx.Report onto a Result plus its optional
-// RichResult card.
-//
-// Two shapes, tried in order:
-//
-//	a unit conversion:  "100km to m", "-40 C to F", "2 GiB to MB", "5 km"
-//	everything else:     "2+2*3", "sqrt(2)", "solve x^2-4=0",
-//	                     "d/dx sin(x)", "integrate x^2 from 0 to 3",
-//	                     "plot sin(x)", "40% of 250", "5 choose 2"
-//
-// Cold start (phi/CLAUDE.md): this runs on every keystroke. The engine's
-// passes are all finite, but a pathological expression could still take
-// longer than providerTimeout, so the actual evaluation runs in a
-// goroutine and is abandoned if ctx fires first — the query never blocks
-// on it.
+// CalculatorProvider answers arithmetic, math and conversions locally via
+// internal/mathx. Tries conversion first, then calculation. Runs async to
+// avoid blocking providerTimeout.
 type CalculatorProvider struct{}
 
 func (CalculatorProvider) Name() string { return "calculator" }

@@ -7,12 +7,7 @@ import (
 	"strings"
 )
 
-// nonPhysicalBlockDevice prefixes exclude anything under /sys/block that is
-// not a physical disk with a SMART attribute table: loopback, RAM-backed,
-// zram, optical drives, and the two common virtual-block-device layers —
-// device-mapper (dm-N, what a LUKS volume like mini's /srv shows up as) and
-// software RAID (mdN). Real hardware review on mini caught dm-0 (the /srv
-// crypt mapping) in this sweep before this exclusion existed.
+// Virtual block devices excluded from SMART checks (loopback, zram, dm, md).
 var nonPhysicalBlockDevice = []string{"loop", "ram", "zram", "sr", "dm", "md"}
 
 // smartStatus enumerates real disks from /sys/block, then runs smartctl -H

@@ -5,20 +5,8 @@ import (
 	"strings"
 )
 
-// convert.go turns a free-text unit-conversion query into a Report. It is
-// deliberately separate from Evaluate: the launcher's converter provider
-// tries this first, and only if it does not match does the text go to the
-// calculator.
-//
-// Accepted shapes (case-insensitive, connector is to|in|into|as|->|→):
-//
-//	100 km to m          100km to m           100 kilometres in miles
-//	5ft to cm            -40 C to F           1e6 bytes to MB
-//	km to mi             (implicit value 1)
-//	20 c in f            (the "in" connector, disambiguated from inches)
-//
-// It does NOT handle currency (a separate provider) or compound units
-// ("5 ft 3 in") — those return ok == false.
+// Unit conversion query parsing (separate from calculator). Connectors:
+// to|in|into|as|->|→. No currency, no compound units ("5 ft 3 in").
 
 var (
 	reConnector   = regexp.MustCompile(`(?i)\s+(?:to|into|as)\s+|\s*(?:->|=>|→)\s*`)

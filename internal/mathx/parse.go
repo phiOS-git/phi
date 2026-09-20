@@ -2,18 +2,9 @@ package mathx
 
 import "strings"
 
-// A precedence-climbing parser producing the Node tree. It supports:
-//
-//   - the arithmetic operators + - * / ^ and modulo (% or "mod")
-//   - implicit multiplication: 2x, 2(3), (a)(b), 3 sin(x)  (same
-//     precedence as an explicit *)
-//   - prefix +/- and postfix ! (factorial) and % (percent -> x/100)
-//   - function calls f(a, b, ...) and |x| for absolute value
-//   - one relation (= < > <= >=) turning the parse into an equation or
-//     inequality; a chained relation a < x < b becomes _and(a<x, x<b)
-//
-// Parse is the only export. Everything downstream (eval, deriv, simplify,
-// solve, plot) consumes Node.
+// Precedence-climbing parser: arithmetic, implicit multiplication, prefix/postfix
+// ops, functions, one relation (= < > <= >=). Output is Node consumed by
+// eval, deriv, simplify, solve, plot.
 
 // Parse turns source text into a Node.
 func Parse(input string) (Node, error) {
