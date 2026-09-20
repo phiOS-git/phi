@@ -1,7 +1,5 @@
 // Package query is phi's launcher backend: ranking, providers, actions.
-// Each keystroke spawns a fresh process with concurrent providers bounded by
-// timeout. Every provider shells out (windows via hyprctl, commands via exec)
-// — phi stays self-contained and testable.
+// Each keystroke spawns fresh concurrent providers bounded by timeout.
 package query
 
 import (
@@ -11,7 +9,7 @@ import (
 	"time"
 )
 
-// Result is one launcher candidate.
+// Result is a launcher candidate.
 type Result struct {
 	ID       string  `json:"id"`       // stable across invocations, for frecency — e.g. "app:firefox.desktop"
 	Provider string  `json:"provider"` // which Provider produced this, for the shell's grouping/icon choices
@@ -23,17 +21,14 @@ type Result struct {
 	Rich *RichResult `json:"rich,omitempty"`
 }
 
-// Action is what selecting a Result does. Kind is a closed set the shell
-// switches on; Data carries whatever that Kind needs. System-level actions
-// (lock, suspend, volume, brightness, screenshot) are deliberately never
-// phi verbs — ActionSystem hands the shell a plain action name and the shell
-// itself performs it.
+// Action is what selecting a Result does; Kind is closed set, Data
+// carries Kind-specific details.
 type Action struct {
 	Kind string            `json:"kind"`
 	Data map[string]string `json:"data"`
 }
 
-// Closed set of Action.Kind values.
+// Action.Kind is a closed set of action types.
 const (
 	ActionExec           = "exec"           // Data["command"]: run detached, no terminal
 	ActionExecTerminal   = "execTerminal"   // Data["command"]: open in a new terminal window
@@ -50,29 +45,19 @@ const (
 	ActionLoading = "loading"
 )
 
-// Provider produces candidate Results for a query. q is already trimmed.
-// An empty q means nothing has been typed yet; most providers should return
-// nothing rather than guess at a default listing. Frecency-only browsing on
-// an empty query is supported by others; this is about ranking real queries
-// correctly.
+// Provider produces candidate Results for query q (trimmed,
+// possibly empty).
 type Provider interface {
 	Name() string
 	Query(ctx context.Context, q string) []Result
 }
 
-// providerTimeout bounds every external-command provider individually.
-// 120ms keeps the whole query well inside the "order of milliseconds"
-// budget even if every provider races to the deadline at once — this
-// number has no document behind it, chosen as a round, generous bound for
-// a local IPC call (hyprctl) or a warm on-disk index (zoxide), flagged for
-// retuning once this runs on real hardware.
+// providerTimeout: 120ms per provider to keep queries under the
+// "order of milliseconds" launcher requirement.
 const providerTimeout = 120 * time.Millisecond
 
-// Providers returns the full provider set. A function, not a package-level
-// slice: tests construct smaller sets directly (see rank_test.go,
-// calculator_test.go), so this has exactly one caller — internal/cli's query
-// verb. phiVerbs is PhiCommandProvider's recognised verb set, built by that
-// caller from view.Commands. Nil or empty simply disables that provider.
+// Providers returns the full provider set (phiVerbs configures
+// PhiCommandProvider).
 func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 	return []Provider{
 		CalculatorProvider{},
@@ -114,10 +99,7 @@ var prefixProviders = map[string][]string{
 	"rddt":    {"sitesearch"},
 }
 
-// detectPrefix reports the known prefix keyword leading q, only once
-// there is at least one more word after it — "web" alone is not yet a
-// request to search, matching every routed provider's own "keyword +
-// space" convention.
+// detectPrefix reports the prefix keyword leading q (only if 2+ words).
 func detectPrefix(q string) string {
 	fields := strings.Fields(q)
 	if len(fields) < 2 {
@@ -129,21 +111,9 @@ func detectPrefix(q string) string {
 	return ""
 }
 
-// Run executes every provider concurrently, each bounded by
-// providerTimeout, then merges and ranks the combined results. frecency
-// may be nil — Rank simply skips the frecency term for every candidate,
-// which is what a first-run machine with no history yet should do anyway.
-//
-// lockedPrefix is the runner-bar prefix feature's "locked" state (Tab
-// pressed on a matched prefix, phi-shell's Launcher.qml): when it names a
-// known prefix, only the provider(s) it routes to run at all — "while a
-// prefix word is selected, the only results shown will be determined by
-// the prefix". q is passed through unchanged either way,
-// keyword included, so the routed provider's own keyword-stripping still
-// applies; there is deliberately no separate "stripped" query shape, one
-// code path covers both the locked and unlocked cases below. An unknown
-// or empty lockedPrefix runs every provider, unfiltered, exactly as
-// before this feature.
+// Run executes providers concurrently (each bounded by providerTimeout),
+// then merges and ranks results. lockedPrefix filters to specific
+// providers (empty runs all).
 func Run(ctx context.Context, providers []Provider, q string, frecency *Frecency, lockedPrefix string) []Result {
 	active := providers
 	if names, ok := prefixProviders[lockedPrefix]; ok {
