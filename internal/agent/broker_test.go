@@ -127,7 +127,7 @@ func TestBrokerStreamsWithoutBuffering(t *testing.T) {
 }
 
 // TestBrokerInjectsKeyAndStripsClientAuth: the client's own auth attempt is
-// dropped and the real key is attached (§6.2). The key must never appear in
+// dropped and the real key is attached. The key must never appear in
 // what the client can see.
 func TestBrokerInjectsKeyAndStripsClientAuth(t *testing.T) {
 	var gotHeader http.Header

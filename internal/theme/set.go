@@ -87,7 +87,7 @@ func Set(root, variant string, dryRun bool) (SetResult, error) {
 	if err != nil {
 		return SetResult{}, err
 	}
-	// rework-issues.md "New requests" item 16: "increase the padding of
+	// Requested: "increase the padding of
 	// the terminal windows to 40px (make it customisable in the
 	// settings)" — design/tokens.common.sh's PHI_TERM_PADDING is the
 	// design DEFAULT (bumped to 40 there), but a value the user actually

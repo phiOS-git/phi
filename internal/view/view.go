@@ -15,7 +15,7 @@ import (
 const mark = "Φ"
 
 // Command is one top-level verb internal/cli.Run dispatches directly.
-// Commands is the single source Help, ZshCompletion, and Man (S-15) all
+// Commands is the single source Help, ZshCompletion, and Man all
 // render from — before S-15, every verb added after S-10 meant hand-editing
 // Help's table and ZshCompletion's array separately (S-12's theme, S-13's
 // state, S-14's doctor each did); a new verb now means adding one row here.
@@ -40,7 +40,7 @@ var Commands = []Command{
 	{"pkg", "list installed packages by category (T0/AUR/T4/phi-packages)"},
 	{"fan", "PWM fan control (status, list, set) — needs a real hwmon channel"},
 	{"update", "snapshot, pacman -Syu, regenerate themed configs (interactive)"},
-	{"agent", "AI agent subsystem: broker, mcp, ask, project (phios-agente.md)"},
+	{"agent", "AI agent subsystem: broker, mcp, ask, project"},
 }
 
 // Version renders the --version output. It is identical whether or not

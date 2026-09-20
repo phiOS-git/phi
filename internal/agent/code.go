@@ -9,14 +9,14 @@ import (
 	"syscall"
 )
 
-// `phi agent code DIR [-- ARGS...]`, phios-agente-delta.md D-03 / §3.3.
+// `phi agent code DIR [-- ARGS...]`.
 // Replaces the fixed PHI_AGENT_CODE_ROOT: the chosen DIR is the ONLY working
 // directory mounted read-write for this A2 session. The blocklist
 // (blocklist.go) is a selector guard-rail; the real boundary is
 // phi-agent-contain's from-empty mount namespace.
 //
 // This records a session metadata file (session.go) so the shell panel can
-// list and manage the session without ever reaching A2's server (ADR 084).
+// list and manage the session without ever reaching A2's server.
 
 // containLauncher is the contained launch path, shipped in phios-dotfiles.
 const containLauncher = "phi-agent-contain"
@@ -124,7 +124,7 @@ var errNoWorkdir = errors.New("phi agent code: needs a directory")
 
 // a2SupportUnits are the systemd user services A2's containment needs
 // already running before it starts: phi-agent-contain bind-mounts the net/
-// bridge dir (S-72) as-is and never waits for it, so an A2 launch with any
+// bridge dir as-is and never waits for it, so an A2 launch with any
 // of these down does not fail closed at the mount — it starts, then fails
 // deep inside the container with a bare `socat: No such file or directory`
 // connecting to proxy.sock, which reads as a broken feature rather than

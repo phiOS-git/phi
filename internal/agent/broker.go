@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-// The broker is the level-3 credential measure of phios-agente.md §6: the
+// The broker is the level-3 credential measure: the
 // provider key is NEVER in the agent process. opencode (inside the
 // containment) is configured with a provider whose baseURL points at this
-// broker on loopback, and speaks to it in clear (§6.2). The broker — outside
+// broker on loopback, and speaks to it in clear. The broker — outside
 // the containment — holds the key, adds it to the outbound request, streams
 // the response straight back, meters consumption, and applies a local rate
 // limit. If it is down, opencode gets connection-refused and no agent works
@@ -37,7 +37,7 @@ import (
 type BrokerConfig struct {
 	// Listen is the loopback address to serve on, e.g. "127.0.0.1:8789".
 	// A non-loopback host is rejected: the broker must never be reachable
-	// off the machine (§6.2).
+	// off the machine.
 	Listen string `json:"listen"`
 
 	// Upstream is the provider's API base, e.g. "https://api.anthropic.com".
@@ -62,7 +62,7 @@ type BrokerConfig struct {
 	StripRequestHeaders []string `json:"strip_request_headers"`
 
 	// RateLimit is the local cap. Zero requests disables it (not
-	// recommended — §6.3 wants a local limit as well as the provider cap).
+	// recommended — a local limit is wanted as well as the provider cap).
 	RateLimit struct {
 		Requests      int `json:"requests"`
 		WindowSeconds int `json:"window_seconds"`
@@ -197,9 +197,9 @@ func loadProviderKey(cfgDir string) (key, src string, err error) {
 
 // requireLocalListen accepts a loopback host:port, or a "unix:<path>"
 // address. A2's broker listens on a unix socket bind-mounted into the
-// containment (S-72) — the container has --unshare-net and no TCP path to
+// containment — the container has --unshare-net and no TCP path to
 // the host loopback. Anything routable is rejected: the broker is never
-// reachable off the machine (§6.2, §5.3).
+// reachable off the machine.
 func requireLocalListen(addr string) error {
 	if network, path, ok := splitUnix(addr); ok {
 		if network != "unix" || path == "" {

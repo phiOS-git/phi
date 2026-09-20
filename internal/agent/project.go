@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-// Structured project metadata, phios-agente-delta.md D-04. project.json is the
+// Structured project metadata. project.json is the
 // client's to own; progetto.md is derived from it so the engine keeps reading
-// one plain file (§8.5). folders[] are real host directories mounted READ-ONLY
-// into A1's per-project perimeter (§4.3.1, D-02) — never copied.
+// one plain file. folders[] are real host directories mounted READ-ONLY
+// into A1's per-project perimeter — never copied.
 
 // ProjectMeta is the on-disk project.json.
 type ProjectMeta struct {

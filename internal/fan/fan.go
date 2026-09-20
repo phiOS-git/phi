@@ -1,5 +1,5 @@
 // Package fan controls PWM-capable fan channels through the Linux hwmon
-// sysfs ABI (docs/TODO.md: "the stats overlay's fan-profile buttons ...
+// sysfs ABI (Requested: "the stats overlay's fan-profile buttons ...
 // have no real backend"). A live check on zotac (2026-09-15) found a real
 // interface the user's own `sensors-detect` run had missed: hwmon6 is
 // `nct6798` (an ASUS ROG STRIX B550-I's Super I/O chip), exposing pwm1,

@@ -13,7 +13,7 @@ import (
 // checks in this package make.
 const driftTimeout = 30 * time.Second
 
-// dotfilesDrift shells out to bin/phios-install --check (S-01/S-03), the
+// dotfilesDrift shells out to bin/phios-install --check, the
 // tool that already owns "is the repository's plan satisfied on this
 // machine" — doctor composes it rather than reimplementing profile
 // resolution and package/file planning a second time in Go. Exit codes are

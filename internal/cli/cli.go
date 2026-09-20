@@ -1,5 +1,5 @@
 // Package cli parses arguments and dispatches to a verb. A verb it does not
-// know is looked up as phi-<verb> on PATH and run in place (ADR 017): the
+// know is looked up as phi-<verb> on PATH and run in place: the
 // core stays a monolith, the edges stay extensible.
 package cli
 

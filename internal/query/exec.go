@@ -8,7 +8,7 @@ import (
 )
 
 // runCommand is the one place a provider shells out, matching
-// internal/doctor's own run() discipline (S-14): LookPath first so a
+// internal/doctor's own run() discipline: LookPath first so a
 // missing tool is silently "no results," never an error a user sees, and
 // bounded by whatever context the caller (query.Run's providerTimeout)
 // already set — this never adds its own separate timeout on top.

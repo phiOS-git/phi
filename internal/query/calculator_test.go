@@ -69,7 +69,7 @@ func TestCalculatorRejectsNonExpression(t *testing.T) {
 }
 
 func TestCalculatorRejectsBareWordAsVariable(t *testing.T) {
-	// docs/TODO.md (phiOS-workspace) runner-ranking bug: typing an app name
+	// Runner-ranking bug: typing an app name
 	// like "steam" (or a fragment like "stea") into the launcher used to be
 	// read as an implicit one-variable function and plotted, so a
 	// meaningless graph outranked the real app match. A single letter
@@ -98,7 +98,7 @@ func TestCalculatorContextCancel(t *testing.T) {
 	}
 }
 
-// docs/TODO.md's runner-bar prefix feature: "math 2+2" must strip the
+// runner-bar prefix feature: "math 2+2" must strip the
 // keyword and evaluate "2+2" — without this, "math " is unparseable
 // leading text and Evaluate returns an error.
 func TestCalculatorMathPrefix(t *testing.T) {

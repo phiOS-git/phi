@@ -1,10 +1,10 @@
 // Package agent implements the milestone-0 pieces of the phiOS AI agent
-// subsystem (docs/phios-agente.md §13, §14.1) that belong to phi:
+// subsystem that belong to phi:
 //
-//	phi agent broker    the provider-credential broker (§6.2) — S-71
-//	phi agent mcp       the phi MCP server, tool 5 (§7.1) — S-73
-//	phi agent project   active-project switch, rebuilds the perimeter — S-73
-//	phi agent ask       inline one-shot onto the running A1 service (§10.2) — S-74
+//	phi agent broker    the provider-credential broker
+//	phi agent mcp       the phi MCP server, tool 5
+//	phi agent project   active-project switch, rebuilds the perimeter
+//	phi agent ask       inline one-shot onto the running A1 service
 //
 // Everything here is domain logic with a thin view layer, per phi/CLAUDE.md:
 // the broker and MCP server are plain net/http and stdio, no dependency.
@@ -12,7 +12,7 @@
 // The engine (opencode) and the containment (phi-agent-contain, in
 // phios-dotfiles) are NOT in this package. phi only ever talks to opencode
 // over its documented loopback HTTP API and never assumes its on-disk
-// format (ADR 098).
+// format.
 package agent
 
 import (
@@ -23,7 +23,7 @@ import (
 )
 
 // Instance is one of the two configured opencode instances. They differ by
-// configuration, not capability (ADR 085): separate XDG trees, separate
+// configuration, not capability: separate XDG trees, separate
 // credentials, separate containment perimeter.
 type Instance string
 
@@ -102,7 +102,7 @@ func (i Instance) StateDir() (string, error) {
 }
 
 // DataDir is ~/.local/share/phi-agent/<instance> — for A1 this is also the
-// root of the §8.2 data model (personalita/, projects/).
+// root of the data model (personalita/, projects/).
 func (i Instance) DataDir() (string, error) {
 	d, err := dataHome()
 	if err != nil {

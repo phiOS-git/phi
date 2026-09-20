@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// phi MCP server — tool 5 of phios-agente.md §7.1, and the ONLY growth
+// phi MCP server — the ONLY growth
 // point for A1's capabilities. Every future capability is a new entry in
 // mcpTools, never a change to the architecture.
 //
@@ -25,7 +25,7 @@ import (
 //	"mcp": { "phi": { "type": "local", "command": ["phi", "agent", "mcp"] } }
 //
 // It runs INSIDE the containment: it may not assume network, a session
-// bus, or any path outside the §4.3 mounts. It reads only the project and
+// bus, or any path outside the mounts. It reads only the project and
 // personality files already mounted for the agent.
 
 const mcpProtocolVersion = "2025-06-18"

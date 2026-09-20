@@ -26,7 +26,7 @@ func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
 	if q == "" {
 		return nil
 	}
-	// docs/TODO.md's runner-bar prefix feature: "app <name>" must match
+	// runner-bar prefix feature: "app <name>" must match
 	// <name> against each entry's title, not the literal text "app <name>"
 	// — the unprefixed path below is untouched (every entry returned with
 	// Score left at its zero default, Rank's own matchWeight against the

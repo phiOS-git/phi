@@ -6,7 +6,7 @@ import (
 )
 
 // PhiCommandProvider recognises phi's own verbs typed without the leading
-// "phi " (docs/TODO.md: "runner bar should read phi commands without
+// "phi " (Requested: "runner bar should read phi commands without
 // writing the phi prefix (eg. 'theme set dark' is recognised as 'phi theme
 // set dark')"). CommandProvider already runs "phi theme set dark" typed in
 // full, by resolving "phi" via exec.LookPath like any other binary on
@@ -25,7 +25,7 @@ type PhiCommandProvider struct {
 func (PhiCommandProvider) Name() string { return "phi" }
 
 func (p PhiCommandProvider) Query(_ context.Context, q string) []Result {
-	// docs/TODO.md's runner-bar prefix feature: typing the literal word
+	// runner-bar prefix feature: typing the literal word
 	// "phi" first (as its own prefix, "phi theme set dark") must work
 	// exactly like typing the bare verb ("theme set dark") — this provider
 	// was the reported bug, since it only ever matched the bare form.

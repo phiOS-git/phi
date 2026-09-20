@@ -61,7 +61,7 @@ func TestSiteSearchUnknownKeyword(t *testing.T) {
 }
 
 func TestSiteSearchExplicitScoreSurvivesRanking(t *testing.T) {
-	// The regression this whole shape guards against (docs/TODO.md's
+	// The regression this whole shape guards against (the
 	// timer/alarm entry already found this once): a Result whose Score is
 	// left at Rank's zero default, and whose Title doesn't fuzzy-match the
 	// raw query, is silently dropped rather than ranked low.

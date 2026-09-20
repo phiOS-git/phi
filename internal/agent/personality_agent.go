@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Personality memory injection, phios-agente-delta.md D-01 / §3.6.
+// Personality memory injection.
 //
 // opencode's agent config takes a single `prompt`. To get a personality's
 // memoria.md into context alongside its prompt WITHOUT letting the agent write

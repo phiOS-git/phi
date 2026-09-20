@@ -34,7 +34,7 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
-// TestOpenCommandUsesImageWindowForImages guards docs/TODO.md's report that
+// TestOpenCommandUsesImageWindowForImages guards the reported case where
 // opening an image flashed a terminal window instead of persisting: an
 // image result must go through phi-shell's own native image window (the
 // interface rework replaced the earlier explicitly-classed imv viewer with

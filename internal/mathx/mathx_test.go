@@ -219,7 +219,7 @@ func TestPlot(t *testing.T) {
 	}
 }
 
-// TestImplicitPlotRejectsWords guards docs/TODO.md's runner-ranking bug
+// TestImplicitPlotRejectsWords guards the runner-ranking bug
 // report (phiOS-workspace): a bare word like "stea" or "cd" — typed while
 // searching the launcher for an app, not doing maths — was being read as a
 // one-variable function and silently plotted, so the calculator surfaced a

@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// Path guard-rails, phios-agente-delta.md §3.4. These are a SELECTOR
+// Path guard-rails. These are a SELECTOR
 // guard-rail, never the security boundary — the boundary is the from-empty
-// mount namespace (ADR 087). Even a bypassed blocklist leaves A2 with only the
+// mount namespace. Even a bypassed blocklist leaves A2 with only the
 // one directory it was given and A1 with only the project perimeter.
 //
 // The same rules are mirrored in phios-dotfiles `phi-agent-contain` (bash):
@@ -165,7 +165,7 @@ func checkDenied(abs string, subtreeDeny, exactDeny []string) error {
 }
 
 // ValidateFolderOfInterest checks a path is safe to mount READ-ONLY into A1's
-// per-project perimeter (§4.3.1). The path need not exist yet at validation
+// per-project perimeter. The path need not exist yet at validation
 // time from SaveProjectMeta; when it does, it must be a directory.
 func ValidateFolderOfInterest(path string) error {
 	abs := path

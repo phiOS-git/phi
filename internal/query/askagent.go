@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// AskAgentProvider is the "ask ai agent" category docs/TODO.md's runner
+// AskAgentProvider is the "ask ai agent" category the runner
 // category order names (rank.go's own header). Like WebSearchProvider, it
 // never answers itself — the A1 service can take real time to respond and
 // this provider must stay inside providerTimeout — it only offers to hand

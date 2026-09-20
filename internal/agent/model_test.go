@@ -26,7 +26,7 @@ func TestModelEnsureSeedsTwoPersonalities(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(created) != 2 {
-		t.Fatalf("Ensure created %d files, want 2 (§8.3): %v", len(created), created)
+		t.Fatalf("Ensure created %d files, want 2: %v", len(created), created)
 	}
 	ps, _ := m.Personalities()
 	if strings.Join(ps, ",") != "general,technical" {

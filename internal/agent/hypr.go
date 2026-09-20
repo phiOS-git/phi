@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Best-effort Hyprland window lookup for the A2 session store (D-07). A
+// Best-effort Hyprland window lookup for the A2 session store. A
 // terminal `phi agent code` records the address of the terminal it runs in so
 // the panel's "Focus terminal" action has a window to raise. This is NOT a
 // containment surface — it is a read of the compositor's own client list,

@@ -8,7 +8,7 @@ import (
 )
 
 // SiteSearchProvider answers the runner-bar prefix feature's named
-// per-site shortcuts (docs/TODO.md: "Add prefix feature to the runner
+// per-site shortcuts (Requested: "Add prefix feature to the runner
 // bar... website specific like wiki/yt/arch/rddt"): one keyword per site,
 // each opening that site's own search-results page for the rest of the
 // query. No API key or account for any of the four — the same constraint

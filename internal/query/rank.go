@@ -26,7 +26,7 @@ import (
 const frecencyWeight = 15.0
 
 // providerTier ranks a whole category of result above or below another,
-// before any per-query score is even looked at — docs/TODO.md's own
+// before any per-query score is even looked at — own
 // complaint: "it has latest features appearing first (like the calculator)
 // but it does not make sense. Apps should be always first, non hidden
 // files second, math when obvious." Without this, CalculatorProvider's
@@ -40,7 +40,7 @@ const frecencyWeight = 15.0
 // tier, so category always wins over match quality, and match quality
 // (plus frecency) still decides the order within a category.
 //
-// The order below is docs/TODO.md's own full category list, verbatim:
+// The order below is full category list, verbatim:
 // apps, HOME files, commands, phi commands, search any file, ask ai agent,
 // search web, math, conversion — a deliberate flip from the previous
 // scheme, where math/currency outranked commands and web search. Two

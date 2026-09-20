@@ -71,7 +71,7 @@ const (
 	ActionCopyText       = "copyText"       // Data["text"]: e.g. a calculator result
 	ActionSystem         = "system"         // Data["action"]: lock | suspend | hibernate | logout | reboot | shutdown
 	ActionChangeDir      = "changeDir"      // Data["path"]: open a terminal there
-	ActionPushView       = "pushView"       // Data["view"]: sub-view navigation (ADR 022)
+	ActionPushView       = "pushView"       // Data["view"]: sub-view navigation
 	// ActionLoading marks a transient result a provider could not answer
 	// YET, not one it will never answer (nil/no result stays the signal
 	// for that) — added for CurrencyProvider (currency.go's own header has
@@ -127,7 +127,7 @@ func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 	}
 }
 
-// prefixProviders maps a runner-bar prefix keyword (docs/TODO.md: "Add
+// prefixProviders maps a runner-bar prefix keyword (Requested: "Add
 // prefix feature to the runner bar... writing 'web <anything>' will
 // automatically set the 'search on web' first") to the provider Name()(s)
 // it routes to. This map only decides ROUTING; the actual keyword parsing
@@ -177,7 +177,7 @@ func detectPrefix(q string) string {
 // pressed on a matched prefix, phi-shell's Launcher.qml): when it names a
 // known prefix, only the provider(s) it routes to run at all — "while a
 // prefix word is selected, the only results shown will be determined by
-// the prefix" (docs/TODO.md). q is passed through unchanged either way,
+// the prefix". q is passed through unchanged either way,
 // keyword included, so the routed provider's own keyword-stripping still
 // applies; there is deliberately no separate "stripped" query shape, one
 // code path covers both the locked and unlocked cases below. An unknown
@@ -239,7 +239,7 @@ func filterProviders(providers []Provider, names []string) []Provider {
 // boostProviders moves every result from the named provider(s) to the
 // front of an already-ranked list, preserving relative order within each
 // partition — "automatically set it first, but still perform the rest of
-// the ranking" (docs/TODO.md): everything else keeps its normal
+// the ranking": everything else keeps its normal
 // tier/score order, only the matched category moves up.
 func boostProviders(ranked []Result, names []string) []Result {
 	keep := make(map[string]bool, len(names))

@@ -58,9 +58,8 @@ func AgentMemoryList(project string, proposals []string, styled bool) string {
 	return b.String()
 }
 
-// AgentSearch renders `phi agent search`, grouped project -> conversation
-// (phios-agente-delta.md D-06). Each hit says whether the query matched a
-// title or the body.
+// AgentSearch renders `phi agent search`, grouped project -> conversation.
+// Each hit says whether the query matched a title or the body.
 func AgentSearch(query string, res agent.SearchResults) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "search: %q\n", query)
@@ -113,7 +112,7 @@ func AgentSessionList(recs []agent.SessionRecord) string {
 }
 
 // AgentMemoryDiff shows the LITERAL text a proposal would add to memoria.md,
-// as an append (phios-agente.md §8.6: never a summary — a summary would be
+// as an append (never a summary — a summary would be
 // produced by the same model that may have been manipulated).
 func AgentMemoryDiff(name, currentMemory, proposalText string) string {
 	var b strings.Builder

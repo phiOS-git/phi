@@ -8,12 +8,12 @@ import (
 )
 
 // meter appends one JSON object per brokered request to a file — the
-// "natural place to measure consumption" of phios-agente.md §6.2. It is
+// the natural place to measure consumption. It is
 // intentionally simple: a durable, greppable log, not a database. Token
 // accounting is best-effort (Model from the request; a full usage breakdown
 // needs provider-specific response parsing, which streaming makes awkward
 // and which is deferred until a provider is actually chosen — see
-// PROGRESS.md S-71).
+// the broker).
 type meter struct {
 	mu   sync.Mutex
 	path string

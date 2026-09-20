@@ -187,7 +187,7 @@ func evalNumeric(raw string, n Node) (*Report, error) {
 	// single-*character* variable name — one ASCII letter like x/y/t, or one
 	// literal Greek glyph like θ typed directly (the lexer's isIdentStart
 	// already accepts the Greek block as one rune each) — the launcher's own
-	// runner-ranking bug report (docs/TODO.md, phiOS-workspace) is that any
+	// runner-ranking bug report is that any
 	// ordinary word ("stea", "cd", and equally the spelled-out "theta") was
 	// being read as an implicit variable and plotted, burying real
 	// app/command matches under a meaningless graph. A real one-letter

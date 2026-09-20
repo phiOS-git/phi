@@ -18,7 +18,7 @@ func TestWebSearchSingleWordYieldsNothing(t *testing.T) {
 	}
 }
 
-// docs/TODO.md's runner-bar prefix feature: "web <anything>" searches
+// runner-bar prefix feature: "web <anything>" searches
 // exactly <anything>, not the literal text "web <anything>".
 func TestWebSearchPrefixStripsKeyword(t *testing.T) {
 	r := WebSearchProvider{}.Query(context.Background(), "web jeans")

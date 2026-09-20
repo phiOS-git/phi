@@ -7,7 +7,7 @@ import (
 )
 
 // StopwatchProvider answers "stopwatch [start|pause|resume|stop|reset|lap]"
-// runner queries (docs/TODO.md: "the timer, alarm and stopwatch features
+// runner queries (Requested: "the timer, alarm and stopwatch features
 // need to be implemented: they should appear in the status bar overlay and
 // can be called from the runner as well"). Timer/alarm already had a
 // runner path (TimerProvider, this package) — a stopwatch is a separate

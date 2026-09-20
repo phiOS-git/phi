@@ -15,7 +15,7 @@ import (
 // docs/ clones it to the same place (mini-procedura-base.md, razer-procedura-
 // completata.md, phios-procedura-base-2.md all agree), so that is the
 // default; PHI_DOTFILES overrides it for a non-standard layout. phi is
-// installed system-wide by pacman (S-11), decoupled from any one checkout,
+// installed system-wide by pacman, decoupled from any one checkout,
 // so it has to be told — or guess — where the repository is.
 func Root() (string, error) {
 	if v := os.Getenv("PHI_DOTFILES"); v != "" {
@@ -50,7 +50,7 @@ var tokenLine = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)='([^']*)'`)
 func Load(root, variant string) (map[string]string, error) {
 	common := filepath.Join(root, "design", "tokens.common.sh")
 	if _, err := os.Stat(common); err != nil {
-		return nil, fmt.Errorf("design/tokens.common.sh is missing; templates cannot be rendered (S-02)")
+		return nil, fmt.Errorf("design/tokens.common.sh is missing; templates cannot be rendered")
 	}
 	variantFile := filepath.Join(root, "design", "tokens."+variant+".sh")
 	if _, err := os.Stat(variantFile); err != nil {

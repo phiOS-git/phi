@@ -18,7 +18,7 @@ func TestCommandUnresolvableFirstWordYieldsNothing(t *testing.T) {
 	}
 }
 
-// docs/TODO.md's runner-bar prefix feature: "run <anything>" forces this
+// runner-bar prefix feature: "run <anything>" forces this
 // provider's answer, bypassing the exec.LookPath gate — the same
 // unresolvable-first-word text that yields nothing above must work once
 // explicitly prefixed with "run ".

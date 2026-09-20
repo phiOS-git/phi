@@ -9,7 +9,7 @@ import (
 )
 
 // TimerProvider answers "timer <duration> [label]" and "alarm <HH:MM>
-// [label]" runner queries (docs/TODO.md: "add a timer and alarm feature to
+// [label]" runner queries (Requested: "add a timer and alarm feature to
 // phi, also add tools to the runner to quicky setup timers and alarms").
 //
 // Timers and alarms can only actually fire from something that keeps

@@ -28,13 +28,13 @@ const filesMaxResults = 8
 // association that this repository does not ship or manage — nothing here
 // configures one — so its actual behaviour is whatever the live machine
 // happens to resolve, which is what let it silently misbehave (docs/
-// TODO.md: a terminal window flashing open and closing). Naming the real
+// Requested: a terminal window flashing open and closing). Naming the real
 // target explicitly removes that guesswork for the one file type this
 // launcher is asked to treat specially.
 //
 // Previously opened via a bare `imv -i phios-imv`, explicitly classed so
 // hyprland.lua.tmpl's own window rule could float it — replaced once
-// phi-shell grew a real native image surface (rework.md: "images should be
+// phi-shell grew a real native image surface (requested: "images should be
 // opened in floating mode, in a window with a 4px border and a bottom area
 // containing the name of the file... A reference can be seen in the file
 // 'references/floating-panels-reference.JPG'"), which also fixes a real
@@ -76,7 +76,7 @@ type FilesProvider struct{}
 func (FilesProvider) Name() string { return "file" }
 
 func (p FilesProvider) Query(ctx context.Context, q string) []Result {
-	// docs/TODO.md's runner-bar prefix feature: "file <name>" searches for
+	// runner-bar prefix feature: "file <name>" searches for
 	// exactly <name> — without this, fd would search for a file literally
 	// named "file <name>", almost never a real match.
 	if len(q) >= 5 && strings.EqualFold(q[:5], "file ") {

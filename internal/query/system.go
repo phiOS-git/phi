@@ -3,7 +3,7 @@ package query
 import "context"
 
 // SystemActionsProvider offers the launcher's own system actions (S-33
-// AGENT: "system actions (lock, suspend, log out)"; docs/TODO.md: "add log
+// AGENT: "system actions (lock, suspend, log out)"; Requested: "add log
 // out, lock, suspend, hibernate, reboot, shutdown commands so that they
 // can be quickly referenced in the runner bar"). These are exactly ADR
 // 021's own named counter-examples for a phi verb — reboot, shutdown,

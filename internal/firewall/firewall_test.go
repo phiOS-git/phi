@@ -7,7 +7,7 @@ import (
 )
 
 // cidr4 builds an IPv4 CIDR string from octets at runtime — the repo's
-// pre-commit hook refuses a dotted-quad literal in a diff (ADR 067), and a
+// pre-commit hook refuses a dotted-quad literal in a diff, and a
 // unit test is no exception.
 func cidr4(a, b, c, d byte, bits int) string {
 	return netip.PrefixFrom(netip.AddrFrom4([4]byte{a, b, c, d}), bits).String()

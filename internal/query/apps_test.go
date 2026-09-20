@@ -29,7 +29,7 @@ func withFakeDesktopEntries(t *testing.T) {
 	t.Setenv("XDG_DATA_DIRS", t.TempDir())
 }
 
-// docs/TODO.md's runner-bar prefix feature: without stripping "app ",
+// runner-bar prefix feature: without stripping "app ",
 // matchWeight("Firefox", "app firefox") is not a subsequence match at all
 // (no 'a' anywhere in "Firefox") and Rank would drop the entry entirely —
 // the same failure class TimerProvider's own regression test guards

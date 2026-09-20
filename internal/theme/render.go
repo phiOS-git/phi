@@ -1,4 +1,4 @@
-// Package theme replaces bin/phios-render and bin/lib/tokens.sh (S-12):
+// Package theme replaces bin/phios-render and bin/lib/tokens.sh:
 // rendering templates against design tokens, and, from design/adapters.txt,
 // knowing where each themed target lives, how to reload it, and which class
 // it belongs to.

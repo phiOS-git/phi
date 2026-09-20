@@ -4,7 +4,7 @@ import (
 	"phi/internal/tokens"
 )
 
-// MinContrast is the WCAG AA floor for normal text, §6.2, binding on both
+// MinContrast is the WCAG AA floor for normal text, binding on both
 // variants.
 const MinContrast = 4.5
 

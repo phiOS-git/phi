@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// Three-level memory, phios-agente-delta.md D-01. Each level has one
-// `memoria.md` (always in context, §8.5) and one writable `proposte/`
+// Three-level memory. Each level has one
+// `memoria.md` (always in context) and one writable `proposte/`
 // directory. The agent can never write any `memoria.md` — the read-only
 // mount enforces it at every level (ADR 094, principle unchanged). The
 // client, outside the containment, is the only writer, via AcceptProposal.
@@ -126,7 +126,7 @@ func (m *Model) MemoryText(l MemLevel) (string, error) {
 }
 
 // Proposals lists pending memory proposals for a level: files under its
-// proposte/, which the agent may write but not promote (§8.4).
+// proposte/, which the agent may write but not promote.
 func (m *Model) Proposals(l MemLevel) ([]string, error) {
 	dir, err := m.proposteDir(l)
 	if err != nil {
@@ -195,7 +195,7 @@ func (m *Model) ProposalText(l MemLevel, name string) (string, error) {
 
 // AcceptProposal appends a proposal's literal text to the level's memoria.md
 // and removes it from proposte/. This is the client promoting an approved
-// proposal (§8.4) — the only path by which memory is ever written, at any
+// proposal — the only path by which memory is ever written, at any
 // level, and it runs outside the containment.
 func (m *Model) AcceptProposal(l MemLevel, name string) error {
 	if err := checkSegment(name); err != nil {

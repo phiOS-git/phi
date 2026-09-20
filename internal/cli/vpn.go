@@ -16,7 +16,7 @@ Verbs:
                     configs (when readable), and any interface that is up
   status [NAME] [--json]
                     per-tunnel up/down, origin, handshake age and transfer
-                    — never an endpoint or an address (ADR 067)
+                    — never an endpoint or an address
   up NAME           bring a tunnel up   (sudo -n wg-quick up)
   down NAME         bring a tunnel down (sudo -n wg-quick down)
   import PATH [NAME]

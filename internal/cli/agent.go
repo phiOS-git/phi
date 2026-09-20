@@ -18,9 +18,9 @@ const agentUsage = `usage: phi agent <verb> [arguments]
 
 Verbs:
   broker [--instance a1|a2] [--check]
-                    run the provider-credential broker (phios-agente.md §6.2).
-  mcp               run the phi MCP server on stdio (tool 5, §7.1).
-  init              create the §8.2 data model (two seed personalities, no
+                    run the provider-credential broker.
+  mcp               run the phi MCP server on stdio (tool 5).
+  init              create the data model (two seed personalities, no
                     projects) under the A1 XDG data directory. Idempotent;
                     migrates personalita/<name>.md -> personalita/<name>/prompt.md.
   project           projects and their structured metadata (project.json):
@@ -39,17 +39,17 @@ Verbs:
                     [--project NAME] [--title T] | pin ID | unpin ID | title ID TEXT
   search QUERY [--project NAME] [--json]
                     search phi-owned markdown (mirrors, archive, memory,
-                    instructions). Never queries opencode (ADR 099).
+                    instructions). Never queries opencode.
   session           A2 coding sessions, from phi-owned metadata (delta D-07):
                     list [--json] | show ID
   code DIR [-- ARGS...]
                     open the A2 coding agent in DIR (the only rw mount for the
                     session), guarded by the blocklist. Records session metadata.
   ask [--personality NAME] PROMPT
-                    one inline question to the running A1 service (§10.2).
+                    one inline question to the running A1 service.
 
 phi never assumes opencode's on-disk format; it talks to opencode only over
-its documented loopback HTTP API (ADR 098).
+its documented loopback HTTP API.
 `
 
 func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {

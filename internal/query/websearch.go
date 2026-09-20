@@ -11,14 +11,14 @@ import (
 // account (S-33 AGENT's own constraint on the currency provider — the same
 // bar applies here). DuckDuckGo is this agent's own pick, not a document's:
 // no plan file names a search engine, and DuckDuckGo needs no key and
-// matches the privacy stance the browser candidates in phios-architettura.md
+// matches the privacy stance the browser candidates in this project
 // §8.6 already lean toward — flagged for cheap veto.
 type WebSearchProvider struct{}
 
 func (WebSearchProvider) Name() string { return "websearch" }
 
 func (p WebSearchProvider) Query(_ context.Context, q string) []Result {
-	// docs/TODO.md's runner-bar prefix feature: "web <anything>" searches
+	// runner-bar prefix feature: "web <anything>" searches
 	// for exactly <anything>, not the literal text "web <anything>" — strip
 	// the keyword before it reaches the search URL.
 	term := q

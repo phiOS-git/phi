@@ -21,13 +21,13 @@ import (
 //
 // Two §5.6 rows are deliberately absent: launcher frecency and clipboard/
 // notification history are collections, not scalars, and each already has
-// an owning step (S-33/S-73, S-32, S-30) that has not run yet. Modelling
+// an owning step that has not run yet. Modelling
 // them as a single string value here would be a guess this step has no
 // grounds for; they get real keys, or a different storage shape entirely,
 // when their step defines one.
 var Keys = map[string]bool{
 	"theme.variant":     true, // §5.6 "variante di tema attiva" — written by phi theme set until the settings panel exists
-	"monitor.config":    true, // §5.6 "configurazione monitor" (ADR 077)
+	"monitor.config":    true, // §5.6 "configurazione monitor"
 	"wallpaper.path":    true, // §5.6 "percorso dello sfondo attivo"
 	"toggle.night-mode": true, // §5.6 "stato dei toggle runtime"
 	"toggle.dnd":        true,
@@ -36,7 +36,7 @@ var Keys = map[string]bool{
 
 	// Added at S-40 (settings panel, master plan §9.12): each of these is a
 	// VALUE the Theme/Devices sections need a key for, not a new toggle
-	// category — §5.6 lists "stato dei toggle runtime" and "variante di
+	// category — the runtime-state contract lists "stato dei toggle runtime" and "variante di
 	// tema" as examples, not an exhaustive enumeration, and phi-shell/
 	// CLAUDE.md's own S-20 precedent (checking the roadmap before reading a
 	// boundary strictly) applies the same way here: S-42/S-43/S-46 already
@@ -59,7 +59,7 @@ var Keys = map[string]bool{
 	"wallpaper.texture":           true, // "" | a phi wallpaper texture mode name
 	"wallpaper.texture-intensity": true, // 0-100
 
-	// docs/TODO.md: "add option for automated night mode (automatic time
+	// Requested: "add option for automated night mode (automatic time
 	// at nighttime or manual hours range), with settings" — whether
 	// toggle.night-mode is flipped by hand or on a clock, and the window
 	// used when it's on a clock. Scalars, same category as the toggles
@@ -68,7 +68,7 @@ var Keys = map[string]bool{
 	"nightmode.schedule-start": true, // hour 0-23, start of the "custom" window
 	"nightmode.schedule-end":   true, // hour 0-23, end of the "custom" window
 
-	// rework.md: "the settings should allow an 'auto' theme option, where
+	// Requested: "the settings should allow an 'auto' theme option, where
 	// it changes from dark to light based on the time of day." Same shape
 	// as nightmode.schedule above (off/auto/custom + a custom hour window)
 	// — deliberately mirrored rather than inventing a second convention for
@@ -80,7 +80,7 @@ var Keys = map[string]bool{
 	"theme.schedule-start": true, // hour 0-23, dark variant starts
 	"theme.schedule-end":   true, // hour 0-23, light variant starts
 
-	// rework-issues.md "New requests" 1 and 16. Both scalars, same
+	// Both scalars, same
 	// category as every toggle/value above.
 	"bar.battery-percent": true, // "true" | "false" — show the numeric charge next to the battery bar icon
 	"terminal.padding":    true, // integer px, kitty's own window_padding_width — default 40 per the request, user-editable
@@ -120,7 +120,7 @@ func checkKey(key string) error {
 }
 
 // Get reads key. ok is false when the key is valid but has never been set —
-// that is not an error, it is the initial state of everything in §5.6.
+// that is not an error, it is the initial state of every key.
 func Get(key string) (value string, ok bool, err error) {
 	if err := checkKey(key); err != nil {
 		return "", false, err

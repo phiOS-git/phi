@@ -55,7 +55,7 @@ func TestFilterProviders(t *testing.T) {
 }
 
 // TestRunUnlockedBoostsMatchingProvider is the end-to-end version of the
-// docs/TODO.md ask: "writing 'web <anything>' will automatically set the
+// Requested: "writing 'web <anything>' will automatically set the
 // 'search on web' first (but still perform the rest of the ranking)."
 // AskAgentProvider's own tier (tierAskAgent, 3000) outranks websearch's
 // (tierWebSearch, 2000) — without the boost, websearch would sort BELOW

@@ -87,7 +87,7 @@ func TestRankTrustsExplicitProviderScore(t *testing.T) {
 }
 
 // TestRankOrdersByCategoryBeforeMatchQuality is the regression test for
-// docs/TODO.md's own complaint: "it has latest features appearing first
+// complaint: "it has latest features appearing first
 // (like the calculator) but it does not make sense. Apps should be always
 // first, non hidden files second, math when obvious." A whole category
 // must outrank the next one even when its own match within that category
@@ -112,7 +112,7 @@ func TestRankOrdersByCategoryBeforeMatchQuality(t *testing.T) {
 	}
 }
 
-// TestRankAppliesFullCategoryOrder covers docs/TODO.md's full category
+// TestRankAppliesFullCategoryOrder covers full category
 // list end to end: apps, HOME files, commands, phi commands, ask ai agent,
 // search web, math, conversion (search any file is skipped — no such
 // provider exists yet, see rank.go's own comment). Each Result's Title is

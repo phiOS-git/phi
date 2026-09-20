@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// `phi agent ask` — J7 of phios-agente.md §1.3 / §10.2: a quick question in
+// `phi agent ask` — a quick question in
 // the terminal, a thin wrapper onto the ALREADY-RUNNING A1 service. No cold
 // start: it talks to opencode's loopback HTTP API on the port
 // phi-agent-a1.service serves. The session is ephemeral — created, used,
@@ -72,7 +72,7 @@ func Ask(ctx context.Context, cfg AskConfig, prompt string, w io.Writer) error {
 		return fmt.Errorf("opencode did not return a session id: %s", truncate(sess, 200))
 	}
 	// Always clean up, even on error or cancellation — the session must not
-	// linger (§10.2).
+	// linger.
 	defer func() {
 		delCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

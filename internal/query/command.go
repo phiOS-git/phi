@@ -9,7 +9,7 @@ import (
 // CommandProvider implements the app-vs-command heuristic S-33's card asks
 // for and names Q-74: "single token = application, token with arguments =
 // command." A single token is left entirely to ApplicationsProvider (and
-// to the shell falling back to `phi-<name>` on PATH, ADR 017) — this
+// to the shell falling back to `phi-<name>` on PATH) — this
 // provider only fires once there are arguments, and only when the first
 // word is a real, resolvable command, so a plain English phrase typed by
 // mistake never gets offered as "run this in a shell." Confirming Q-74
@@ -21,7 +21,7 @@ type CommandProvider struct{}
 func (CommandProvider) Name() string { return "command" }
 
 func (p CommandProvider) Query(_ context.Context, q string) []Result {
-	// docs/TODO.md's runner-bar prefix feature: "run <anything>" is an
+	// runner-bar prefix feature: "run <anything>" is an
 	// explicit request to run <anything> as a shell command — it bypasses
 	// the exec.LookPath gate below, since the whole point of the prefix is
 	// to force this provider's answer even when the first word alone can't

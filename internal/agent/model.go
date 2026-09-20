@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// The data model of phios-agente.md §8.2, revised by phios-agente-delta.md
-// §3.5, on disk under A1's XDG data directory. Two orthogonal axes:
+// The agent data model, on disk under A1's XDG data directory. Two
+// orthogonal axes:
 // personalities (a system prompt the user owns) and projects (a directory of
 // instructions, materials, memory, archive, transcripts, proposals, output).
 // A1 only — A2 has no memory and no project notion in this sense (§8.6,
@@ -43,7 +43,7 @@ import (
 var seeds embed.FS
 
 // projectSubdirs are created for every project. proposte/ and output/ are the
-// only two the containment mounts writable inside the project tree (§4.3).
+// only two the containment mounts writable inside the project tree.
 var projectSubdirs = []string{"materiali", "archivio", "conversazioni", "proposte", "output"}
 
 // personalitySubdirs are created for every personality directory.
@@ -100,7 +100,7 @@ func activeMarkerPath() (string, error) {
 	return filepath.Join(sd, "active-project"), nil
 }
 
-// Ensure creates the §8.2 skeleton and the two seed personalities if they are
+// Ensure creates the skeleton and the two seed personalities if they are
 // absent, and migrates the pre-delta flat `personalita/<name>.md` layout to
 // `personalita/<name>/prompt.md`. Idempotent: existing files are never
 // overwritten (the user owns the prompts). This is §8.3's "minimal initial
@@ -260,7 +260,7 @@ func (m *Model) HasPersonality(name string) bool {
 }
 
 // WritePersonality creates or replaces a personality's system prompt. The
-// panel calls this (it runs outside the containment and is the user, §8.2 /
+// panel calls this (it runs outside the containment and is the user /
 // D-08); `personalita/` stays read-only inside the mount.
 func (m *Model) WritePersonality(name, prompt string) error {
 	if err := validName("personality", name); err != nil {
@@ -368,8 +368,8 @@ func (m *Model) NewProject(name string, meta ProjectMeta) error {
 	if err := m.SaveProjectMeta(name, meta); err != nil {
 		return err
 	}
-	// memoria.md starts empty. It is always in context (§8.5) and the agent
-	// can never write it (§8.4) — only `phi agent memory accept` appends here.
+	// memoria.md starts empty. It is always in context and the agent
+	// can never write it — only `phi agent memory accept` appends here.
 	if err := os.WriteFile(filepath.Join(dir, "memoria.md"),
 		[]byte("# Memory — project "+name+"\n\nDurable facts for this project. Written only by `phi agent memory accept --level project`.\n"),
 		0o644); err != nil {

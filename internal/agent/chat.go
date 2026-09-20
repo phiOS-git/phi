@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// Client-side transcript mirror, phios-agente-delta.md D-05. The shell client
+// Client-side transcript mirror. The shell client
 // (Services/Agent.qml) writes each conversation's full transcript as markdown
 // into `projects/<name>/conversazioni/<id>.md`, from the opencode HTTP
-// responses it already receives. This is engine-independent (ADR 098): if
+// responses it already receives. This is engine-independent: if
 // opencode is replaced, the mirror files stay. It is the dashboard's chat
 // source and the corpus for `phi agent search` — no query ever touches
 // opencode's private database (ADR 099 §10.1).

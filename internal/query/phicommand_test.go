@@ -53,7 +53,7 @@ func TestPhiCommandProviderNilVerbsIsNoop(t *testing.T) {
 	}
 }
 
-// docs/TODO.md: "phi prefixes in the runner bar don't seem to work" — this
+// Requested: "phi prefixes in the runner bar don't seem to work" — this
 // provider used to only match the bare verb, never the literal "phi "
 // prefix (CommandProvider answered that text instead, at a lower tier).
 func TestPhiCommandProviderRecognisesPhiPrefix(t *testing.T) {

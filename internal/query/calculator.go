@@ -35,7 +35,7 @@ func (p CalculatorProvider) Query(ctx context.Context, q string) []Result {
 	if q == "" || len(q) > 512 {
 		return nil
 	}
-	// docs/TODO.md's runner-bar prefix feature: "math <expr>" is an
+	// runner-bar prefix feature: "math <expr>" is an
 	// explicit request to evaluate <expr>. "convert <expr>" needs no
 	// stripping here — mathx.ParseConversion already strips its own
 	// leading "convert " (reConvertLead, internal/mathx/convert.go). The

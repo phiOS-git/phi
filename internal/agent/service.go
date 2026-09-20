@@ -6,7 +6,7 @@ import (
 )
 
 // RestartA1 restarts the A1 engine user service so the containment is
-// rebuilt for the newly-selected project (phios-agente.md §4.3: "il cambio
+// rebuilt for the newly-selected project (on project change: "il cambio
 // di progetto ricostruisce il contenimento e riavvia il servizio"). A
 // failure here is reported, not fatal: the active-project marker is
 // already written, and the user can restart the unit by hand.

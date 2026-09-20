@@ -7,7 +7,7 @@ import (
 
 // bucket is a fixed-window request counter: at most n requests per window.
 // A local limit is a complement to the provider spending cap, not a
-// replacement (phios-agente.md §6.3 / §6.4): the cap limits the damage, the
+// replacement: the cap limits the damage, the
 // window limits how fast a compromised agent can spend against it.
 //
 // A fixed window (rather than a token bucket) is deliberate: it is trivial

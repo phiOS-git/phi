@@ -66,7 +66,7 @@ func Run(stdin io.Reader, stdout, stderr io.Writer) Result {
 		return r
 	}
 
-	// Regenerate: the pacman hook (phi-packages, S-45) already does this
+	// Regenerate: the pacman hook (phi-packages) already does this
 	// for a targeted package's own upgrade — this is the belt-and-braces
 	// pass covering EVERY themed target after a full -Syu, in case the
 	// hook's own package list ever misses one.

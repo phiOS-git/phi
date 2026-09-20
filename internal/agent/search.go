@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// `phi agent search`, phios-agente-delta.md D-06 / ADR 099. Searches ONLY the
+// `phi agent search`. Searches ONLY the
 // markdown files phi owns — transcript mirrors, archivio/, every level's
 // memoria.md, and progetto.md — never opencode's private database. Results
 // are grouped project → conversation ("smart hierarchy") and each hit says

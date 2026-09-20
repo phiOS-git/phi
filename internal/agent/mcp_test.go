@@ -46,7 +46,7 @@ func TestMCPInitializeAndList(t *testing.T) {
 	listRes, _ := resps[1].Result.(map[string]any)
 	tools, _ := listRes["tools"].([]any)
 	if len(tools) != 1 {
-		t.Fatalf("tools/list returned %d tools, want exactly 1 (§7.1)", len(tools))
+		t.Fatalf("tools/list returned %d tools, want exactly 1", len(tools))
 	}
 	tool, _ := tools[0].(map[string]any)
 	if tool["name"] != "phi_context" {
