@@ -245,7 +245,7 @@ func auditLeaks(enum Enumerator, home string, entries []Entry) ([]Finding, error
 		}
 		if len(names) > 0 {
 			findings = append(findings, Finding{Check: "leak", Kind: "leak", Name: lk.label,
-				Detail: fmt.Sprintf("not empty (%d): %s", len(names), strings.Join(names, ", "))})
+				Detail: leakDetail("not empty", names)})
 		}
 	}
 
@@ -269,7 +269,7 @@ func auditLeaks(enum Enumerator, home string, entries []Entry) ([]Finding, error
 		}
 		if len(names) > 0 {
 			findings = append(findings, Finding{Check: "leak", Kind: "leak", Name: "~/.local/lib/" + e + "/site-packages",
-				Detail: fmt.Sprintf("not empty (%d): %s", len(names), strings.Join(names, ", "))})
+				Detail: leakDetail("not empty", names)})
 		}
 	}
 
@@ -303,7 +303,7 @@ func auditLeaks(enum Enumerator, home string, entries []Entry) ([]Finding, error
 		}
 		if len(stray) > 0 {
 			findings = append(findings, Finding{Check: "leak", Kind: "leak", Name: "~/.local/bin",
-				Detail: fmt.Sprintf("not recorded in the installer manifest or external.txt (%d): %s", len(stray), strings.Join(stray, ", "))})
+				Detail: leakDetail("not recorded in the installer manifest or external.txt", stray)})
 		}
 	}
 
@@ -390,4 +390,19 @@ func auditFingerprints(home string) ([]RootState, []Finding, error) {
 		}
 	}
 	return roots, findings, nil
+}
+
+// leakDetail summarises a non-empty leak directory. The listing is capped
+// because this string reaches a terminal report, `phi doctor` output and the
+// settings panel alike: a directory that has accumulated hundreds of entries
+// is exactly the case worth reporting, and exactly the case where printing
+// every name would bury the finding it is meant to communicate. The count is
+// always exact; only the sample is bounded.
+func leakDetail(lead string, names []string) string {
+	const sample = 10
+	if len(names) <= sample {
+		return fmt.Sprintf("%s (%d): %s", lead, len(names), strings.Join(names, ", "))
+	}
+	return fmt.Sprintf("%s (%d): %s, … and %d more",
+		lead, len(names), strings.Join(names[:sample], ", "), len(names)-sample)
 }
