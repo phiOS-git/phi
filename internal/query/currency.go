@@ -17,31 +17,11 @@ import (
 	"phi/internal/state"
 )
 
-// CurrencyProvider converts between currency codes using a cached exchange
-// rate. The API (api.frankfurter.dev, ECB-sourced, needs no key) was verified
-// live before writing this file — a real GET request with confirmed response
-// shape, not assumed.
-//
-// REAL BUG found on first real-hardware verification (phi-shell's own
-// Launcher, M4): the original design fired the refresh as `go
-// refreshCurrencyCache(...)` — a goroutine. `phi query` is a FRESH,
-// SHORT-LIVED PROCESS per invocation (this package's own header, cold
-// start), and a goroutine does not survive its process exiting — Query()
-// returns almost immediately (the cache read is local and instant), `phi
-// query`'s own caller prints the results and the process ends, and the Go
-// runtime kills every goroutine at that point, mid-HTTP-request. Fixed by
-// spawning a detached OS-level child process (spawnCurrencyRefresh below)
-// via exec.Command with Setsid
-// so it survives the parent's exit as an orphan, does the fetch
-// synchronously with a real 5s deadline, and writes the cache for the
-// NEXT query to read.
-//
-// providerTimeout (query.go, 120ms) is still far too short for a real
-// HTTPS round trip, so the query path itself still never makes one
-// directly — it only ever reads the on-disk cache and, when there's
-// nothing usable yet, returns a transient ActionLoading result (see
-// query.go) so the launcher can show something and try again shortly,
-// instead of silently returning nothing the way this provider used to.
+// CurrencyProvider converts currencies using cached exchange rates
+// (api.frankfurter.dev, ECB-sourced). Cache refresh spawns a detached
+// child process (goroutines don't survive phi query's process exit). Query
+// only reads cache locally (never makes HTTP calls); returns ActionLoading
+// when refreshing.
 type CurrencyProvider struct{}
 
 func (CurrencyProvider) Name() string { return "currency" }
@@ -105,8 +85,7 @@ type currencyQuery struct {
 	fromUnit, toUnit string
 }
 
-// currencySymbols maps the common single-character currency signs to their
-// ISO code so "$100 to eur" and "100 usd to eur" both parse.
+// currencySymbols maps currency signs to ISO codes.
 var currencySymbols = strings.NewReplacer(
 	"$", " usd ", "€", " eur ", "£", " gbp ", "¥", " jpy ",
 	"₹", " inr ", "₽", " rub ", "₩", " krw ", "₺", " try ",
@@ -196,9 +175,7 @@ func loadCurrencyCache() currencyCache {
 	return c
 }
 
-// rate returns the cached rate and whether it is fresh enough that no
-// background refresh is needed. rate == 0 with fresh == false means
-// "no entry at all yet" — the caller's cue to answer nothing this time.
+// rate returns cached rate and freshness (0, false = no entry yet).
 func (c currencyCache) rate(from, to string) (rate float64, fresh bool) {
 	e, ok := c[currencyPairKey(from, to)]
 	if !ok {
@@ -207,13 +184,8 @@ func (c currencyCache) rate(from, to string) (rate float64, fresh bool) {
 	return e.Rate, time.Since(e.FetchedAt) < currencyCacheMaxAge
 }
 
-// RefreshCurrencyCache fetches a fresh rate and writes it to the cache.
-// Exported: internal/cli's "query refresh-currency" sub-verb (the detached
-// child spawnCurrencyRefresh starts) calls this directly and synchronously
-// — it IS the whole job of that child process, not a fire-and-forget
-// helper called from within a live query anymore (see this file's own
-// header for why the previous goroutine-based version of that idea could
-// never work).
+// RefreshCurrencyCache fetches and caches a fresh rate (runs in detached
+// child process).
 func RefreshCurrencyCache(from, to string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

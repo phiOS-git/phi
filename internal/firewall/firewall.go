@@ -1,8 +1,5 @@
-// Package firewall manages phiOS's inbound firewall through nftables.
-// Phi owns /etc/nftables.conf with a default-drop input chain policy.
-// Desired state lives at ~/.config/phi/firewall.json. Privileged operations
-// (nft load, config persist) go through sudo -n. No user addresses are ever
-// logged or returned.
+// Package firewall manages phiOS's inbound nftables firewall via
+// /etc/nftables.conf and ~/.config/phi/firewall.json.
 package firewall
 
 import (
@@ -24,10 +21,10 @@ import (
 
 const cmdTimeout = 15 * time.Second
 
-// nftConf is the single file phi owns. nftables.service loads it on boot.
+// nftConf: nftables config file that phi manages.
 const nftConf = "/etc/nftables.conf"
 
-// Presets differ in rule application, ICMP handling, and log rate-limiting.
+// preset defines firewall behavior for a profile.
 type preset struct {
 	applyRules bool
 	icmpEcho   bool
@@ -41,7 +38,7 @@ var presets = map[string]preset{
 	"paranoid": {applyRules: false, icmpEcho: false, fullICMP: false, logLimit: "1/second burst 5 packets"},
 }
 
-// PresetNames is the accepted set, ordered loosest → strictest.
+// PresetNames lists accepted profiles (loosest to strictest).
 var PresetNames = []string{"home", "public", "paranoid"}
 
 func validPreset(p string) bool {
@@ -49,17 +46,14 @@ func validPreset(p string) bool {
 	return ok
 }
 
-// Rule is one inbound allow. Port is "22" or a "1714-1764" range; Proto is
-// "tcp" or "udp"; From is a CIDR (or bare IP) that "" leaves as any source.
+// Rule is one inbound allow rule.
 type Rule struct {
 	Port  string `json:"port"`
 	Proto string `json:"proto"`
 	From  string `json:"from,omitempty"`
 }
 
-// ID is a short stable handle for `phi firewall remove` — derived from the
-// rule itself, so the same rule always has the same id and a duplicate add
-// is a no-op.
+// ID returns a stable handle for the rule.
 func (r Rule) ID() string {
 	h := fnv.New32a()
 	fmt.Fprintf(h, "%s|%s|%s", r.Port, r.Proto, r.From)

@@ -10,8 +10,7 @@ import (
 	"phi/internal/tokens"
 )
 
-// State is what SetResult found (or would find, under --dry-run) about one
-// adapter's destination file.
+// State indicates an adapter's destination file status.
 type State string
 
 const (
@@ -20,7 +19,7 @@ const (
 	StateUpdate State = "update" // destination exists with different content
 )
 
-// ReloadOutcome says what Set did about a changed target's reload.
+// ReloadOutcome is the result of reloading a changed target.
 type ReloadOutcome string
 
 const (
@@ -38,13 +37,12 @@ type AdapterResult struct {
 	ReloadError   error
 }
 
-// SetResult is the whole of one `phi theme set` run.
+// SetResult is the complete result of `phi theme set`.
 type SetResult struct {
 	Variant  string
 	DryRun   bool
 	Adapters []AdapterResult
-	// PortalPreference is PortalNone under --dry-run: writing the live
-	// preference is exactly the kind of side effect --dry-run must not perform.
+	// PortalPreference is PortalNone under --dry-run.
 	PortalPreference PortalOutcome
 }
 
@@ -71,12 +69,8 @@ func (r SetResult) RestartRequired() []AdapterResult {
 	return out
 }
 
-// Set renders every design/adapters.txt target for variant, reloads Class A
-// and B targets that changed, and — unless dryRun — writes the destination
-// files and records the active variant (bin/lib/tokens.sh's phios_variant
-// reads exactly what RecordVariant writes). It is idempotent: an adapter
-// whose destination already holds the rendered bytes is left untouched and
-// never reloaded.
+// Set renders adapter targets for the variant, reloads changed Class A/B
+// targets, and writes files/variant state (unless dryRun). Idempotent.
 func Set(root, variant string, dryRun bool) (SetResult, error) {
 	adapters, err := ParseAdapters(root)
 	if err != nil {
