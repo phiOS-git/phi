@@ -1,32 +1,7 @@
-// Package vpn drives WireGuard tunnels for phiOS (settings-overhaul batch
-// F). The user placed the VPN work fully in scope this session:
-// wireguard-tools becomes a package, `phi vpn` the control surface, and the
-// tunnel .conf files live at ~/.config/phi/wireguard/ — OUTSIDE every
-// repository, because a WireGuard config holds a private key and an
-// endpoint address and the GitHub remote is public (CLAUDE.md rule 5/6).
-//
-// No endpoint, allowed-IPs, or peer address is ever returned or logged.
-// This is enforced structurally: TunnelStatus has no address field, and the
-// `wg show` parser reads only handshake age and byte counters, skipping
-// endpoint and allowed-ips columns. Future fields carrying addresses would
-// be violations structurally.
-//
-// Privilege: `wg-quick up/down` needs root. `phi vpn` calls it through
-// `sudo -n` (non-interactive), which fails cleanly with a clear message
-// when profiles/desktop/system/sudoers.d/49-phi-vpn is not installed —
-// that drop-in is /etc material this project writes into the repo and never
-// applies. `list` and the basic up/down state need no privilege (config
-// dir listing + `ip link`); only the handshake/transfer detail does.
-//
-// Config sources (settings-overhaul follow-up): a tunnel is visible if it
-// has a .conf in the managed directory, OR a .conf in /etc/wireguard (read
-// best-effort — that directory is usually root-only, and a locked-down one
-// simply yields nothing here), OR is a WireGuard interface that is
-// currently up (`ip link show type wireguard`, unprivileged). So a tunnel
-// the user set up the standard way — `sudo wg-quick up foo` with the conf
-// in /etc/wireguard — shows and toggles without any import step. Import
-// copies a conf into the managed directory so `phi vpn` fully owns it;
-// forget deletes it again, and only ever from the managed directory.
+// Package vpn drives WireGuard tunnels. Configs live at
+// ~/.config/phi/wireguard/ (outside the repo, for private keys). No endpoint,
+// allowed-IPs, or peer address is ever logged. Tunnels from /etc/wireguard
+// are visible without import; import copies to managed directory.
 package vpn
 
 import (
@@ -44,17 +19,10 @@ import (
 
 const cmdTimeout = 15 * time.Second
 
-// etcDir is wg-quick's own default location. `phi vpn` never writes here and
-// never reads a file's contents from here — it only lists the .conf basenames
-// (best-effort: the directory is often 0700 root, in which case this silently
-// yields nothing and the tunnel still shows up via activeInterfaces() once it
-// is up) so a tunnel the user set up the standard way (`sudo wg-quick up foo`
-// with foo.conf in /etc/wireguard) is visible and toggleable without first
-// importing it.
+// etcDir is wg-quick's default location, read best-effort for .conf basenames.
 const etcDir = "/etc/wireguard"
 
-// ConfigDir is ~/.config/phi/wireguard — never a repository path. This is the
-// only directory `phi vpn` writes to (import) or deletes from (forget).
+// ConfigDir is ~/.config/phi/wireguard.
 func ConfigDir() (string, error) {
 	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
 		return filepath.Join(v, "phi", "wireguard"), nil
@@ -66,9 +34,7 @@ func ConfigDir() (string, error) {
 	return filepath.Join(home, ".config", "phi", "wireguard"), nil
 }
 
-// confNames returns the *.conf basenames (without the suffix) in dir. A
-// missing or unreadable directory yields nil, no error — both are normal
-// (no managed configs yet; /etc/wireguard is root-only).
+// confNames returns *.conf basenames in dir, nil on missing/unreadable.
 func confNames(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -105,11 +71,7 @@ func isManaged(name string) bool {
 	return false
 }
 
-// activeInterfaces lists the WireGuard interfaces that are currently up, via
-// `ip link show type wireguard` — unprivileged, no `sudo`, so it never
-// touches the privileged-detail backoff (noDetailBackoff). This is what
-// makes a tunnel brought up by hand (any location, `wg-quick` or `wg`
-// directly) show as "up" without a readable config.
+// activeInterfaces lists WireGuard interfaces currently up via ip link (unprivileged).
 func activeInterfaces(ctx context.Context) []string {
 	cctx, cancel := context.WithTimeout(ctx, cmdTimeout)
 	defer cancel()
@@ -138,9 +100,7 @@ func activeInterfaces(ctx context.Context) []string {
 	return names
 }
 
-// List returns every tunnel name known to phiOS — managed configs, plus
-// /etc/wireguard configs when readable, plus any WireGuard interface that is
-// currently up — sorted and de-duplicated.
+// List returns all tunnel names: managed configs, /etc/wireguard, and active interfaces.
 func List() ([]string, error) {
 	set := map[string]bool{}
 	for _, n := range managedNames() {
@@ -160,10 +120,7 @@ func List() ([]string, error) {
 	return names, nil
 }
 
-// validName rejects a tunnel name that could escape a directory or is not a
-// plausible interface name. WireGuard interface names are short; wg-quick
-// itself caps the derived interface at 15 chars, but the config basename can
-// be longer — keep this permissive on length, strict on separators.
+// validName rejects names that could escape directories or aren't plausible WireGuard names.
 func validName(name string) error {
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\ \t\n") {
 		return fmt.Errorf("invalid tunnel name %q", name)
@@ -251,12 +208,7 @@ func Status(ctx context.Context, name string) ([]TunnelStatus, error) {
 	return out, nil
 }
 
-// noDetailBackoff is how long a `sudo -n wg show` denial suppresses further
-// attempts. The shell polls `phi vpn status` on a timer (Services/Vpn.qml,
-// 15s), and each poll is a fresh process, so without an on-disk memo a
-// missing sudoers drop-in means one denied sudo — a journal line each — every
-// 15 seconds forever. The up/down state itself needs no privilege, so the
-// only thing lost while backed off is the handshake/transfer detail.
+// noDetailBackoff is how long a sudo denial suppresses wg show attempts.
 const noDetailBackoff = time.Hour
 
 // noDetailMarker is ~/.cache/phi/vpn-nodetail. Its mtime is the last denial.
@@ -299,10 +251,7 @@ func clearDetailDenied() {
 	}
 }
 
-// wgPeerStats runs `sudo -n wg show <iface> dump` and extracts ONLY the
-// handshake age and byte counters from the first peer line. Endpoint and
-// allowed-ips columns are read past and dropped. A recent denial (no sudoers
-// drop-in) short-circuits it — see noDetailBackoff.
+// wgPeerStats extracts handshake age and byte counters from wg show output.
 func wgPeerStats(ctx context.Context, iface string) (handshakeAge, rx, tx string, ok bool) {
 	if detailBackedOff() {
 		return "", "", "", false
@@ -348,9 +297,7 @@ func wgPeerStats(ctx context.Context, iface string) (handshakeAge, rx, tx string
 	return "", "", "", false
 }
 
-// Up brings a tunnel up. A managed config is passed by full path
-// (`wg-quick up ~/.config/phi/wireguard/<name>.conf`); anything else is
-// passed by bare name, which wg-quick resolves against /etc/wireguard.
+// Up brings a tunnel up, using the managed config path if it exists.
 func Up(ctx context.Context, name string) error {
 	if err := validName(name); err != nil {
 		return err
@@ -364,8 +311,7 @@ func Up(ctx context.Context, name string) error {
 	return runPrivileged(ctx, "wg-quick", "up", name)
 }
 
-// Down brings a tunnel down by interface name (works regardless of where the
-// config lives — wg-quick down only needs the running interface).
+// Down brings a tunnel down by interface name.
 func Down(ctx context.Context, name string) error {
 	if err := validName(name); err != nil {
 		return err
@@ -373,12 +319,8 @@ func Down(ctx context.Context, name string) error {
 	return runPrivileged(ctx, "wg-quick", "down", name)
 }
 
-// Import copies a WireGuard .conf into the managed directory
-// (~/.config/phi/wireguard) with 0600 perms, so `phi vpn` can manage it. The
-// name defaults to the source basename without .conf; pass a non-empty name
-// to rename. It refuses a file that does not look like a WireGuard config
-// (no [Interface] section) rather than copying an arbitrary file into a
-// directory wg-quick will later be told to run.
+// Import copies a WireGuard .conf into ~/.config/phi/wireguard, validating
+// that it has an [Interface] section.
 func Import(src, name string) (string, error) {
 	data, err := os.ReadFile(src)
 	if err != nil {
@@ -407,9 +349,7 @@ func Import(src, name string) (string, error) {
 	return name, nil
 }
 
-// Forget deletes a managed tunnel's config. It only ever touches
-// ~/.config/phi/wireguard — a tunnel in /etc/wireguard or one that only
-// exists as a running interface is refused, since `phi` does not own it.
+// Forget deletes a managed tunnel's config.
 func Forget(name string) error {
 	if err := validName(name); err != nil {
 		return err
