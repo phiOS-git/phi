@@ -11,47 +11,25 @@ import (
 	"strings"
 )
 
-// The agent data model, on disk under A1's XDG data directory. Two
-// orthogonal axes: personalities (a system prompt the user owns) and projects
-// (a directory of instructions, materials, memory, archive, transcripts,
-// proposals, output). A1 only — A2 has no memory and no project notion.
-//
-//	<A1 data dir>/
-//	  memoria.md                    system memory        [agent: read-only]
-//	  proposte/                     system proposals     [agent: write]
-//	  personalita/<name>/
-//	    prompt.md                   system prompt — user writes, agent reads
-//	    memoria.md                  personality memory   [agent: read-only]
-//	    proposte/                   personality proposals[agent: write]
-//	  projects/<name>/
-//	    project.json                structured metadata — the client owns it
-//	    progetto.md                 instructions — regenerated from project.json
-//	    materiali/                  [agent: read-only]
-//	    archivio/                   [agent: read-only]
-//	    conversazioni/              transcript mirror    [agent: read-only]
-//	    memoria.md                  project memory       [agent: read-only]
-//	    proposte/                   project proposals    [agent: write]
-//	    output/                     [agent: write]
-//
-// The italian inner names (progetto.md, materiali/, archivio/, proposte/,
-// memoria.md) and the english outer `projects/` are kept as the code already
-// had them: renaming re-invalidates V-05/V-06 for no functional gain.
+// The agent data model (A1 only) with personalities (system prompts) and
+// projects (instructions, materials, memory, archive, transcripts, proposals).
+// Personalities: <A1 data dir>/personalita/<name>/{prompt.md, memoria.md}.
+// Projects: <A1 data dir>/projects/<name>/{project.json, progetto.md,
+// materiali/, archivio/, conversazioni/, memoria.md, proposte/, output/}.
+// Italian inner names kept for compatibility.
 
 //go:embed seeds/general.md seeds/technical.md
 var seeds embed.FS
 
-// projectSubdirs are created for every project. proposte/ and output/ are the
-// only two the containment mounts writable inside the project tree.
+// projectSubdirs: created for every project.
 var projectSubdirs = []string{"materiali", "archivio", "conversazioni", "proposte", "output"}
 
-// personalitySubdirs are created for every personality directory.
+// personalitySubdirs: created for every personality.
 var personalitySubdirs = []string{"proposte"}
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 
-// validName guards every user-supplied personality or project name: it becomes
-// a single path segment inside the data dir and, for a project, a mount
-// destination.
+// validName validates personality or project names (path-safe, 1-64 chars).
 func validName(kind, name string) error {
 	if !nameRE.MatchString(name) {
 		return fmt.Errorf("invalid %s name %q: use lowercase letters, digits, '.', '_', '-' (1-64 chars)", kind, name)
@@ -59,13 +37,12 @@ func validName(kind, name string) error {
 	return nil
 }
 
-// Model is A1's data model rooted at its XDG data dir.
+// Model is A1's data model.
 type Model struct {
 	root string // <A1 data dir>
 }
 
-// OpenModel returns A1's data model, creating the root if needed but not the
-// seed content (call Ensure for that).
+// OpenModel returns A1's data model, creating the root if needed.
 func OpenModel() (*Model, error) {
 	root, err := A1.DataDir()
 	if err != nil {
@@ -87,9 +64,7 @@ func (m *Model) projectDir(name string) string {
 	return filepath.Join(m.projectsDir(), name)
 }
 
-// activeMarkerPath is the file phi-agent-contain reads (as a fallback to
-// $PHI_AGENT_PROJECT) to know which project to mount. It lives in STATE, not
-// DATA: it is runtime selection, not model content.
+// activeMarkerPath: runtime project selection (in STATE, not DATA).
 func activeMarkerPath() (string, error) {
 	sd, err := A1.StateDir()
 	if err != nil {
@@ -98,11 +73,8 @@ func activeMarkerPath() (string, error) {
 	return filepath.Join(sd, "active-project"), nil
 }
 
-// Ensure creates the skeleton and the two seed personalities if they are
-// absent, and migrates the pre-delta flat `personalita/<name>.md` layout to
-// `personalita/<name>/prompt.md`. Idempotent: existing files are never
-// overwritten (the user owns the prompts). This is minimal initial state
-// for a clean install, not a reset.
+// Ensure creates skeleton and seed personalities, migrates old layout
+// (idempotent, preserves user prompts).
 func (m *Model) Ensure() (created []string, err error) {
 	if err := os.MkdirAll(m.personalitaDir(), 0o755); err != nil {
 		return nil, err
@@ -195,8 +167,7 @@ func (m *Model) ensurePersonalityDir(name string) error {
 	return nil
 }
 
-// Personalities lists the personality names. A name counts if it is a
-// directory holding prompt.md, or (transition) a bare `<name>.md`.
+// Personalities lists personality names (from directories or flat files).
 func (m *Model) Personalities() ([]string, error) {
 	entries, err := os.ReadDir(m.personalitaDir())
 	if err != nil {
@@ -227,8 +198,7 @@ func (m *Model) Personalities() ([]string, error) {
 	return out, nil
 }
 
-// PersonalityPromptPath returns the prompt file for a personality, preferring
-// the directory layout and falling back to the flat file.
+// PersonalityPromptPath returns the prompt file for a personality.
 func (m *Model) PersonalityPromptPath(name string) string {
 	dirPrompt := filepath.Join(m.personalityDir(name), "prompt.md")
 	if fileExists(dirPrompt) {
@@ -241,7 +211,7 @@ func (m *Model) PersonalityPromptPath(name string) string {
 	return dirPrompt
 }
 
-// PersonalityPrompt returns the system-prompt text of a personality.
+// PersonalityPrompt returns a personality's system prompt text.
 func (m *Model) PersonalityPrompt(name string) (string, error) {
 	if err := validName("personality", name); err != nil {
 		return "", err
@@ -249,7 +219,7 @@ func (m *Model) PersonalityPrompt(name string) (string, error) {
 	return readFileString(m.PersonalityPromptPath(name))
 }
 
-// HasPersonality reports whether a personality exists.
+// HasPersonality reports if a personality exists.
 func (m *Model) HasPersonality(name string) bool {
 	if !nameRE.MatchString(name) {
 		return false
@@ -257,9 +227,7 @@ func (m *Model) HasPersonality(name string) bool {
 	return fileExists(m.PersonalityPromptPath(name))
 }
 
-// WritePersonality creates or replaces a personality's system prompt. The
-// panel calls this (it runs outside the containment). The personalities/
-// directory stays read-only inside the containment.
+// WritePersonality creates or replaces a personality's system prompt.
 func (m *Model) WritePersonality(name, prompt string) error {
 	if err := validName("personality", name); err != nil {
 		return err
@@ -276,8 +244,7 @@ func (m *Model) WritePersonality(name, prompt string) error {
 	return m.syncPersonalityAgent(name)
 }
 
-// RenamePersonality moves a personality directory (prompt + its memory and
-// proposals) to a new name.
+// RenamePersonality moves a personality to a new name.
 func (m *Model) RenamePersonality(oldName, newName string) error {
 	if err := validName("personality", oldName); err != nil {
 		return err
@@ -291,7 +258,7 @@ func (m *Model) RenamePersonality(oldName, newName string) error {
 	if m.HasPersonality(newName) {
 		return fmt.Errorf("personality %q already exists", newName)
 	}
-	// Normalise the old one to the directory layout first.
+	// Migrate to directory layout if needed.
 	if !dirExists(m.personalityDir(oldName)) {
 		if err := m.ensurePersonalityDir(oldName); err != nil {
 			return err
@@ -309,8 +276,7 @@ func (m *Model) RenamePersonality(oldName, newName string) error {
 	return m.syncPersonalityAgent(newName)
 }
 
-// DeletePersonality removes a personality and everything under it. It refuses
-// to delete a personality that is the default of an existing project.
+// DeletePersonality removes a personality (refuses if it's a project default).
 func (m *Model) DeletePersonality(name string) error {
 	if err := validName("personality", name); err != nil {
 		return err
@@ -328,7 +294,7 @@ func (m *Model) DeletePersonality(name string) error {
 	return os.RemoveAll(m.personalityDir(name))
 }
 
-// Projects lists the project names.
+// Projects lists all project names.
 func (m *Model) Projects() ([]string, error) {
 	entries, err := os.ReadDir(m.projectsDir())
 	if err != nil {
@@ -347,8 +313,7 @@ func (m *Model) Projects() ([]string, error) {
 	return out, nil
 }
 
-// NewProject creates a project directory with a fresh project.json and a
-// rendered progetto.md. It does not switch to it.
+// NewProject creates a project directory (does not switch to it).
 func (m *Model) NewProject(name string, meta ProjectMeta) error {
 	if err := validName("project", name); err != nil {
 		return err
@@ -366,8 +331,7 @@ func (m *Model) NewProject(name string, meta ProjectMeta) error {
 	if err := m.SaveProjectMeta(name, meta); err != nil {
 		return err
 	}
-	// memoria.md starts empty. It is always in context and the agent
-	// can never write it — only `phi agent memory accept` appends here.
+	// memoria.md starts empty (agent read-only, written via `memory accept`).
 	if err := os.WriteFile(filepath.Join(dir, "memoria.md"),
 		[]byte("# Memory — project "+name+"\n\nDurable facts for this project. Written only by `phi agent memory accept --level project`.\n"),
 		0o644); err != nil {
@@ -376,13 +340,13 @@ func (m *Model) NewProject(name string, meta ProjectMeta) error {
 	return nil
 }
 
-// HasProject reports whether a project directory exists.
+// HasProject reports if a project directory exists.
 func (m *Model) HasProject(name string) bool {
 	fi, err := os.Stat(m.projectDir(name))
 	return err == nil && fi.IsDir()
 }
 
-// ActiveProject reads the active-project marker. "" means none selected.
+// ActiveProject reads the active-project marker ("" if none).
 func (m *Model) ActiveProject() (string, error) {
 	p, err := activeMarkerPath()
 	if err != nil {
@@ -395,7 +359,7 @@ func (m *Model) ActiveProject() (string, error) {
 	return v, err
 }
 
-// SetActiveProject writes the marker after checking the project exists.
+// SetActiveProject sets the active project marker.
 func (m *Model) SetActiveProject(name string) error {
 	if !m.HasProject(name) {
 		return fmt.Errorf("no such project: %q (create it with `phi agent project new %s`)", name, name)
@@ -410,10 +374,7 @@ func (m *Model) SetActiveProject(name string) error {
 	return os.WriteFile(p, []byte(name+"\n"), 0o644)
 }
 
-// ClearActiveProject removes the marker, returning to the unfiled/global
-// chat scope ActiveProject() already documents as "" — the counterpart to
-// SetActiveProject, since nothing else in this model could ever reach that
-// state again once a project had been used.
+// ClearActiveProject removes the active project marker.
 func (m *Model) ClearActiveProject() error {
 	p, err := activeMarkerPath()
 	if err != nil {
@@ -425,7 +386,7 @@ func (m *Model) ClearActiveProject() error {
 	return nil
 }
 
-// ProjectInstructions returns progetto.md for a project ("" if absent).
+// ProjectInstructions returns a project's progetto.md (empty if absent).
 func (m *Model) ProjectInstructions(project string) (string, error) {
 	s, err := readFileString(filepath.Join(m.projectDir(project), "progetto.md"))
 	if errors.Is(err, os.ErrNotExist) {
