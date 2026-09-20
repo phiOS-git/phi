@@ -1,37 +1,8 @@
-// Package firewall manages phiOS's inbound firewall through nftables
-// (scope change: firewall selection between
-// nftables, ufw and firewalld; the user chose nftables directly — it is in
-// the base system (T0), needs no daemon (nftables.service is a one-shot that
-// loads one file), and has no abstraction layer to fight when the settings
-// panel wants fine control.
-//
-// Model: phi owns /etc/nftables.conf outright. When enabled the file is one
-// `table inet phi` with a single `input` base chain, policy drop. In
-// nftables an `accept` from any base chain is not final — evaluation
-// continues to the next chain — but a `drop` is, and a chain's policy drop
-// takes effect for every packet no rule in that chain accepted. So phi's
-// default-drop applies to EVERY inbound packet on this hook, including
-// traffic a container/VM runtime's own nftables table would have accepted:
-// a published container port needs a matching `phi firewall allow`. The
-// scoped `add`/`delete table inet phi` (never `flush ruleset`) keeps phi
-// from deleting those other tables' rules — it does not let their accepts
-// punch through phi's chain. `disable` removes `table inet phi` entirely
-// (accept all). nftables.service loads the file on boot, so persistence
-// needs no extra unit.
-//
-// Desired state lives at ~/.config/phi/firewall.json — nested JSON, not the
-// closed `phi state` key set (same call Services/Chroma makes for
-// chroma.json). Every verb mutates that file, re-renders, and (while enabled)
-// re-applies. The two privileged steps — `nft -f -` to load and `tee
-// /etc/nftables.conf` to persist — go through `sudo -n`; the drop-in that
-// allows them without a password is profiles/*/system/etc/sudoers.d/
-// 49-phi-firewall, /etc material this repo ships and never applies, exactly
-// like 49-phi-vpn.
-//
-// Nothing here emits one of the user's own addresses. The
-// `blocked` view reads the kernel log for the "phi-fw:" prefix and reports
-// the source and destination port of packets the firewall dropped — an
-// unsolicited scanner's own fields, never any phiOS config or peer address.
+// Package firewall manages phiOS's inbound firewall through nftables.
+// Phi owns /etc/nftables.conf with a default-drop input chain policy.
+// Desired state lives at ~/.config/phi/firewall.json. Privileged operations
+// (nft load, config persist) go through sudo -n. No user addresses are ever
+// logged or returned.
 package firewall
 
 import (
@@ -56,9 +27,7 @@ const cmdTimeout = 15 * time.Second
 // nftConf is the single file phi owns. nftables.service loads it on boot.
 const nftConf = "/etc/nftables.conf"
 
-// Presets. They differ only in whether the user's allow-rules are honoured,
-// whether ICMP echo (ping) is answered, whether non-essential ICMP is kept
-// at all, and how hard the log rule is rate-limited.
+// Presets differ in rule application, ICMP handling, and log rate-limiting.
 type preset struct {
 	applyRules bool
 	icmpEcho   bool
@@ -150,8 +119,7 @@ func (r Rule) nftSaddr() string {
 	return "ip saddr " + r.From + " "
 }
 
-// nftDport is the dport match — a bare port or an "N-M" range, both of which
-// nftables accepts verbatim.
+// nftDport returns the dport match clause.
 func (r Rule) nftDport() string {
 	return r.Port
 }
@@ -207,8 +175,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// Save writes firewall.json (0600 — it is not secret, but neither is it
-// anyone else's business), creating ~/.config/phi if needed.
+// Save writes firewall.json at mode 0600.
 func Save(c Config) error {
 	path, err := ConfigPath()
 	if err != nil {
@@ -232,12 +199,8 @@ const managedHeader = "#!/usr/bin/nft -f\n" +
 	"# phi`, so a container/VM runtime's own nftables tables are left alone.\n" +
 	"# See `phi firewall status`.\n\n"
 
-// Render turns a Config into an nft script — the same text is loaded live
-// (`nft -f -`) and written to /etc/nftables.conf for nftables.service to
-// load at boot. Every statement is scoped to `table inet phi`: `add` is
-// idempotent, `flush table` clears only our table, and the disabled form
-// creates-then-deletes it. No `flush ruleset`, so docker/libvirt/podman
-// tables are never touched.
+// Render generates an nft script scoped to `table inet phi`, idempotent,
+// leaving other firewall tables untouched.
 func Render(c Config) string {
 	var b strings.Builder
 	b.WriteString(managedHeader)
@@ -250,9 +213,7 @@ func Render(c Config) string {
 	}
 
 	p := presets[c.Preset]
-	// Delete-then-recreate rather than flush: a clean slate with no chance of
-	// a stale chain spec or leftover rule, and `delete` after `add` never
-	// errors on a missing table.
+	// Delete-then-recreate ensures a clean slate.
 	b.WriteString("add table inet phi\n")
 	b.WriteString("delete table inet phi\n")
 	b.WriteString("add table inet phi\n")
@@ -306,9 +267,7 @@ func sortedRules(rules []Rule) []Rule {
 
 // --- apply ----------------------------------------------------------------
 
-// Apply loads the rendered ruleset live (`nft -f -`) and, only if that
-// succeeds, persists it to /etc/nftables.conf. A render bug therefore never
-// leaves a file that breaks the next boot. Both steps are `sudo -n`.
+// Apply loads the rendered ruleset live, then persists it only on success.
 func Apply(ctx context.Context, c Config) error {
 	if _, err := exec.LookPath("nft"); err != nil {
 		return fmt.Errorf("nft not installed (package: nftables)")
@@ -352,9 +311,7 @@ func firstLine(s string) string {
 
 // --- mutation verbs -----------------------------------------------------
 
-// with loads the config, applies fn, re-applies the firewall when it is
-// enabled, and saves — in that order, so a failed apply leaves firewall.json
-// untouched and `status` still reflects reality.
+// with loads config, applies fn, re-applies if enabled, saves.
 func with(ctx context.Context, fn func(*Config) error) error {
 	c, err := Load()
 	if err != nil {
@@ -371,8 +328,7 @@ func with(ctx context.Context, fn func(*Config) error) error {
 	return Save(c)
 }
 
-// Enable turns the firewall on. It applies first and only records
-// enabled=true if that worked — a denied `sudo` leaves the config off.
+// Enable turns the firewall on, applying first.
 func Enable(ctx context.Context) error {
 	c, err := Load()
 	if err != nil {
@@ -388,8 +344,7 @@ func Enable(ctx context.Context) error {
 	return Save(c)
 }
 
-// Disable turns it off. It always records the intent (so the state is not
-// stuck) and applies the accept-all ruleset best-effort.
+// Disable turns the firewall off, recording intent before applying.
 func Disable(ctx context.Context) error {
 	c, err := Load()
 	if err != nil {
@@ -415,8 +370,7 @@ func SetLogging(ctx context.Context, on bool) error {
 	return with(ctx, func(c *Config) error { c.Logging = on; return nil })
 }
 
-// Allow adds an inbound rule. A duplicate (same port/proto/source) is a
-// silent no-op. It returns the rule that is now present.
+// Allow adds an inbound rule, silently returning if it already exists.
 func Allow(ctx context.Context, r Rule) (Rule, error) {
 	r = r.canonical()
 	if r.Proto == "" {
@@ -460,13 +414,8 @@ func Remove(ctx context.Context, id string) error {
 
 // --- lockout guard -----------------------------------------------------
 
-// LockoutRisk returns a warning when this process is running over SSH and
-// applying c would refuse a *fresh* inbound connection on the SSH server
-// port. The live `nft -f -` reload keeps the current session up — it
-// matches `ct state established,related accept` — but a reconnect, or a
-// reboot (nftables.service reloads /etc/nftables.conf from a clean state),
-// would be dropped. It returns "" when there is no SSH session or the port
-// stays reachable. Callers print it; they never fail on it.
+// LockoutRisk warns if applying c would block SSH reconnection. The live
+// session stays up via established-connection matching, but reboot would fail.
 func LockoutRisk(c Config) string {
 	if !c.Enabled {
 		return ""
@@ -555,9 +504,7 @@ type State struct {
 	NftAvailable bool         `json:"nftAvailable"`
 }
 
-// Status reports config plus a live probe of whether `table inet phi` is
-// actually loaded — so a drift between "enabled in the file" and "enforced
-// in the kernel" (a denied sudo, a manual `nft flush`) is visible.
+// Status reports config plus whether `table inet phi` is actually loaded.
 func Status(ctx context.Context) (State, error) {
 	c, err := Load()
 	if err != nil {
@@ -581,10 +528,8 @@ func lookPathOK(name string) bool {
 	return err == nil
 }
 
-// probeEnforced runs `sudo -n nft list table inet phi`. Exit 0 → the table
-// is loaded ("yes"); a clean "No such file or directory" → "no"; anything
-// else (no nft, denied sudo) → "unknown". A denial is memoised for an hour
-// so the shell's 15s status poll does not write a journal line every time.
+// probeEnforced checks if `table inet phi` is loaded. Denials are memoised
+// for an hour to avoid journal spam from status polls.
 func probeEnforced(ctx context.Context) string {
 	if probeBackedOff() {
 		return "unknown"
@@ -668,21 +613,14 @@ var (
 	kvDpt   = regexp.MustCompile(`\bDPT=(\S+)`)
 )
 
-// RecentBlocked reads the last of the "phi-fw:" kernel log lines through
-// `sudo -n journalctl` (the kernel log is root-only on Arch — dmesg_restrict).
-// Needs `c.Logging` to have been on for anything to be there.
+// RecentBlocked reads recent "phi-fw:" kernel log lines via journalctl.
 func RecentBlocked(ctx context.Context, limit int) ([]Blocked, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 200
 	}
 	cctx, cancel := context.WithTimeout(ctx, cmdTimeout)
 	defer cancel()
-	// Fixed argument vector so the sudoers drop-in can pin it exactly. The
-	// grep pattern is "phi-fw" without the trailing colon on purpose: a
-	// literal ':' in a sudoers command argument is a metacharacter that
-	// must be backslash-escaped, and an unescaped one is a hard parse error
-	// (`visudo -cf` rejects the whole file). "phi-fw" matches a superset;
-	// the exact "phi-fw:" filter below narrows it back down in-process.
+	// "phi-fw" pattern avoids sudoers colon-escaping issues.
 	cmd := exec.CommandContext(cctx, "sudo", "-n", "journalctl",
 		"-k", "--no-pager", "-o", "json", "-g", "phi-fw", "-n", "200")
 	out, err := cmd.Output()
