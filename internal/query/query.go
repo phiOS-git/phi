@@ -1,26 +1,7 @@
-// Package query is phi's launcher backend. Ranking, providers and actions
-// live here; the launcher in phi-shell is a renderer only — it invokes
-// `phi query` and draws what comes back, never deciding actions itself.
-//
-// Cold start is the constraint that shapes everything below (phi/CLAUDE.md:
-// "the launcher invokes it on every keystroke... order of milliseconds"):
-// `phi query <text>` is a FRESH PROCESS on every keystroke, not a
-// persistent server queried repeatedly. Every provider that shells out
-// therefore runs concurrently and is bounded by providerTimeout — a slow
-// or hung provider degrades that one provider's results, never the whole
-// query. Results must never block typing, achieved by never letting one
-// provider hold up the others, not by streaming partial results (a
-// run-once-and-exit CLI cannot do that cleanly).
-//
-// Open windows is the one provider that could, in principle, read the
-// state phi-shell's own ToplevelManager already holds live — reading it
-// through some IPC back into the running shell instance was considered and
-// rejected: it would mean `phi query` behaves differently depending on
-// whether a shell happens to be running. Testability matters: this package's
-// own tests construct providers and call them directly with no shell in the
-// loop. Ranking authority must never migrate between components. The
-// windows provider instead shells out to `hyprctl clients -j` itself, exactly
-// like every other provider — phi stays self-contained.
+// Package query is phi's launcher backend: ranking, providers, actions.
+// Each keystroke spawns a fresh process with concurrent providers bounded by
+// timeout. Every provider shells out (windows via hyprctl, commands via exec)
+// — phi stays self-contained and testable.
 package query
 
 import (
@@ -30,10 +11,7 @@ import (
 	"time"
 )
 
-// Result is one candidate the launcher can show and act on. JSON field
-// names are lowercase to match this project's own convention elsewhere
-// (Bar/modules.json, Panels/tabs.json in phi-shell) — the shell's Launcher
-// is this type's one JSON consumer.
+// Result is one launcher candidate.
 type Result struct {
 	ID       string  `json:"id"`       // stable across invocations, for frecency — e.g. "app:firefox.desktop"
 	Provider string  `json:"provider"` // which Provider produced this, for the shell's grouping/icon choices
@@ -41,10 +19,7 @@ type Result struct {
 	Subtitle string  `json:"subtitle"`
 	Score    float64 `json:"score"`
 	Action   Action  `json:"action"`
-	// Rich is an optional structured payload for results a single line
-	// cannot express (calculator steps, plots, a converter's alternate
-	// units). nil for every other provider; the shell renders it as an
-	// expanded card and still honours Action for copy/select.
+	// Rich is optional structured data (calculator steps, plots, alternate units).
 	Rich *RichResult `json:"rich,omitempty"`
 }
 
