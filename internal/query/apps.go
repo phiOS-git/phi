@@ -72,9 +72,28 @@ func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
 // desktopEntryDirs follows the XDG base directory spec's search order for
 // application directories: user overrides first (XDG_DATA_HOME, default
 // ~/.local/share), then each of XDG_DATA_DIRS (default
-// /usr/local/share:/usr/share) in order.
+// /usr/local/share:/usr/share) in order, then Flatpak's own export
+// directories explicitly.
+//
+// Flatpak exports live in <data-home>/flatpak/exports/share/applications
+// and /var/lib/flatpak/exports/share/applications, neither of which the
+// XDG_DATA_DIRS default above covers. They only reach this scan when the
+// session environment happens to carry them, but phi query is a fresh
+// process per keystroke inheriting whatever the session set — the same gap
+// this project always closes by adding the fallback explicitly rather than
+// trusting the session to be configured correctly. A dedup pass guards
+// against double-scanning a directory a correctly configured session's
+// XDG_DATA_DIRS already listed.
 func desktopEntryDirs() []string {
+	seen := map[string]bool{}
 	var dirs []string
+	add := func(d string) {
+		if d == "" || seen[d] {
+			return
+		}
+		seen[d] = true
+		dirs = append(dirs, d)
+	}
 
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" {
@@ -83,7 +102,7 @@ func desktopEntryDirs() []string {
 		}
 	}
 	if dataHome != "" {
-		dirs = append(dirs, filepath.Join(dataHome, "applications"))
+		add(filepath.Join(dataHome, "applications"))
 	}
 
 	dataDirs := os.Getenv("XDG_DATA_DIRS")
@@ -92,9 +111,15 @@ func desktopEntryDirs() []string {
 	}
 	for _, d := range strings.Split(dataDirs, ":") {
 		if d != "" {
-			dirs = append(dirs, filepath.Join(d, "applications"))
+			add(filepath.Join(d, "applications"))
 		}
 	}
+
+	if dataHome != "" {
+		add(filepath.Join(dataHome, "flatpak", "exports", "share", "applications"))
+	}
+	add("/var/lib/flatpak/exports/share/applications")
+
 	return dirs
 }
 

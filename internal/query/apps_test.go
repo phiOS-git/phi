@@ -138,6 +138,77 @@ Exec=firefox
 	}
 }
 
+func TestDesktopEntryDirsIncludesFlatpakExports(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_DATA_DIRS", t.TempDir()) // a session that never mentions Flatpak at all
+
+	dirs := desktopEntryDirs()
+
+	wantUser := filepath.Join(dataHome, "flatpak", "exports", "share", "applications")
+	wantSystem := "/var/lib/flatpak/exports/share/applications"
+	if !containsDir(dirs, wantUser) {
+		t.Errorf("desktopEntryDirs() = %v, want the user Flatpak export dir %q", dirs, wantUser)
+	}
+	if !containsDir(dirs, wantSystem) {
+		t.Errorf("desktopEntryDirs() = %v, want the system Flatpak export dir %q", dirs, wantSystem)
+	}
+}
+
+func TestDesktopEntryDirsDedupesFlatpakExports(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	// A correctly configured session already lists the system Flatpak
+	// export tree in XDG_DATA_DIRS — the explicit fallback must not scan
+	// it a second time.
+	t.Setenv("XDG_DATA_DIRS", "/var/lib/flatpak/exports/share")
+
+	dirs := desktopEntryDirs()
+	count := 0
+	for _, d := range dirs {
+		if d == "/var/lib/flatpak/exports/share/applications" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("desktopEntryDirs() listed the system Flatpak export dir %d times, want exactly 1: %v", count, dirs)
+	}
+}
+
+func containsDir(dirs []string, want string) bool {
+	for _, d := range dirs {
+		if d == want {
+			return true
+		}
+	}
+	return false
+}
+
+// TestApplicationsProviderFindsFlatpakExport is the regression this commit
+// exists for: a Flatpak app exports a .desktop file only under
+// <data-home>/flatpak/exports/share/applications, which XDG_DATA_DIRS's
+// hardcoded default never covers — so before desktopEntryDirs() added the
+// explicit fallback, this app would have been entirely invisible to the
+// launcher despite being correctly installed.
+func TestApplicationsProviderFindsFlatpakExport(t *testing.T) {
+	dataHome := t.TempDir()
+	exportsDir := filepath.Join(dataHome, "flatpak", "exports", "share", "applications")
+	if err := os.MkdirAll(exportsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "[Desktop Entry]\nType=Application\nName=WiVRn\nExec=wivrn-app\n"
+	if err := os.WriteFile(filepath.Join(exportsDir, "io.github.wivrn.wivrn.desktop"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_DATA_DIRS", t.TempDir()) // no session-provided Flatpak entries
+
+	r := ApplicationsProvider{}.Query(context.Background(), "app wivrn")
+	if len(r) != 1 || r[0].Title != "WiVRn" {
+		t.Fatalf("Query(%q) = %v, want the WiVRn Flatpak export entry found via the explicit fallback dir", "app wivrn", r)
+	}
+}
+
 func TestCleanExecString(t *testing.T) {
 	cases := map[string]string{
 		"firefox %u":           "firefox",
