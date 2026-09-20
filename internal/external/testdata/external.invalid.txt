@@ -1,0 +1,11 @@
+# phiOS — external declaration fixture (invalid): one violation per line,
+# each otherwise well-formed so the one thing under test is isolated.
+
+bad name | T2 | flathub:org.example.App | 1.0 | - | name contains a space
+core-tool | T0 | core | 1.0 | - | T0 belongs in packages.txt
+wivrn | T2 | flathub:io.github.wivrn.wivrn | latest | - | ref must never be the literal "latest"
+prowlarr | TC | docker.io/linuxserver/prowlarr | v1.0 | - | TC ref must start with sha256:
+schoolapp | T4 | https://example.org/schoolapp.AppImage | 3.1.2 | - | T4 requires a real 64-char sha256
+wivrn | T2 | flathub:io.github.wivrn.wivrn | 0.22 | a4f9c2d1e0b8a7968574635241302f1e0d9c8b7a695847362514039281706f5e | T2 must not carry a checksum
+helper | T3 | https://example.org/helper.tar.gz | v1.4.0 | -
+helper | T3 | https://example.org/helper.tar.gz | v1.4.0 | - |

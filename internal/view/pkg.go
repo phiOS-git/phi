@@ -5,6 +5,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"phi/internal/external"
 	"phi/internal/pkg"
 )
 
@@ -63,6 +64,54 @@ func PkgManager(l pkg.ManagerListing) string {
 		}
 	}
 	tw.Flush()
+	return b.String()
+}
+
+// PkgAudit renders `phi pkg audit`: parse problems first (a malformed
+// declaration is never silently folded into "no findings"), then every
+// declared entry with its audited status, the four fingerprint roots, and
+// finally the findings that drove those statuses.
+func PkgAudit(report external.Report) string {
+	var b strings.Builder
+
+	if len(report.Problems) > 0 {
+		fmt.Fprintf(&b, "parse problems (%d):\n", len(report.Problems))
+		for _, p := range report.Problems {
+			fmt.Fprintf(&b, "  %s:%d: %s\n", p.File, p.Line, p.Detail)
+		}
+		b.WriteString("\n")
+	}
+
+	fmt.Fprintf(&b, "declared (%d):\n", len(report.Entries))
+	if len(report.Entries) == 0 {
+		b.WriteString("  none\n")
+	} else {
+		tw := tabwriter.NewWriter(&b, 2, 4, 2, ' ', 0)
+		for _, e := range report.Entries {
+			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", e.Name, e.Tier, e.Status, e.Profile)
+		}
+		tw.Flush()
+	}
+	b.WriteString("\n")
+
+	fmt.Fprintf(&b, "fingerprints (%d roots):\n", len(report.Roots))
+	for _, r := range report.Roots {
+		state := "unchanged"
+		if r.Changed {
+			state = "CHANGED"
+		}
+		fmt.Fprintf(&b, "  %-12s %-9s %4d entries  %s\n", r.Root, state, r.Entries, r.Digest)
+	}
+	b.WriteString("\n")
+
+	if len(report.Findings) == 0 {
+		b.WriteString("no findings\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "findings (%d):\n", len(report.Findings))
+	for _, f := range report.Findings {
+		fmt.Fprintf(&b, "  [%s/%s] %s: %s\n", f.Check, f.Kind, f.Name, f.Detail)
+	}
 	return b.String()
 }
 

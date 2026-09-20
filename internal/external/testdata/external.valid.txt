@@ -1,0 +1,7 @@
+# phiOS — external declaration fixture (valid).
+# name | tier | source | ref | sha256 | reason
+
+wivrn | T2 | flathub:io.github.wivrn.wivrn | 0.22 | - | VR streaming, no official package
+prowlarr | TC | docker.io/linuxserver/prowlarr | sha256:9c1f0a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7 | - | indexer manager
+schoolapp | T4 | https://example.org/schoolapp.AppImage | 3.1.2 | a4f9c2d1e0b8a7968574635241302f1e0d9c8b7a695847362514039281706f5e | required by a course, no alternative
+helper | T3 | https://example.org/helper.tar.gz | v1.4.0 | - | contained helper, no official package

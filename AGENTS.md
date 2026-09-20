@@ -30,8 +30,8 @@ and is not repeated here.
 |---|---|
 | `theme` | `render` one template, `set VARIANT` (render every adapter target, reload what changed, record the variant), `preview`, `list`, `check` (WCAG contrast of every checked pair), `contrast`. Generates `phi-shell`'s `Config/Tokens.qml` and `Config/Colors.json`. |
 | `state` | A closed set of runtime keys under `$XDG_STATE_HOME/phi`, one flat file each. Rejects any unlisted key. |
-| `doctor` | Composes seven checks: disk space, failed systemd units, dotfiles drift, SMART, declared-service status, package categories and the `/srv` mount. Every check degrades to `unknown` rather than guessing. |
-| `pkg` | `list` / `check` / `state` — explicitly-installed packages split by origin, with available updates. A non-empty AUR row is a policy violation and is flagged. |
+| `doctor` | Composes eight checks: disk space, failed systemd units, dotfiles drift, SMART, declared-service status, package categories, external declarations and the `/srv` mount. Every check degrades to `unknown` rather than guessing. |
+| `pkg` | `list` / `check` / `state` / `audit` / `accept` — explicitly-installed packages split by origin, with available updates, plus drift/leak/integrity auditing of declared non-official software (`external.txt`, tiers TC/T2/T3/T4). A non-empty AUR row is a policy violation and is flagged. |
 | `vpn` | WireGuard: `list`, `status`, `up` / `down`, `import`, `forget`. Configs live at `~/.config/phi/wireguard/`, `0600`, outside every repo. |
 | `firewall` | Inbound nftables (`inet phi`): `status`, `enable` / `disable`, `preset`, `allow`, `remove`, `log`, `blocked`. |
 | `wallpaper` | `texture MODE` — a deterministic procedural PNG tile for the shell's background layer. |

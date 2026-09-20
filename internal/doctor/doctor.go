@@ -49,11 +49,12 @@ func (r Report) ExitCode() int {
 }
 
 // Run composes every check. root/rootErr is tokens.Root()'s result:
-// when phios-dotfiles cannot be found, checks that need it (drift, service)
-// report that plainly rather than refusing to run altogether. Other checks
-// (disk, systemd, SMART, packages) need no checkout and stay useful even on
-// machines where phios-dotfiles was never cloned. ctx bounds every external
-// command, so a stuck systemctl or smartctl call cannot hang the caller.
+// when phios-dotfiles cannot be found, checks that need it (drift, service,
+// external declarations) report that plainly rather than refusing to run
+// altogether. Other checks (disk, systemd, SMART, packages) need no
+// checkout and stay useful even on machines where phios-dotfiles was never
+// cloned. ctx bounds every external command, so a stuck systemctl or
+// smartctl call cannot hang the caller.
 func Run(ctx context.Context, root string, rootErr error) Report {
 	host := hostName()
 
@@ -70,9 +71,11 @@ func Run(ctx context.Context, root string, rootErr error) Report {
 
 	if rootErr != nil {
 		checks = append(checks, unreachable("service status", rootErr))
+		checks = append(checks, unreachable("external declarations", rootErr))
 	} else {
 		profiles, found, profilesErr := declaredProfiles(root, host)
 		checks = append(checks, serviceStatus(ctx, root, host, profiles, found, profilesErr))
+		checks = append(checks, externalDeclarations(ctx, root, host, profiles, found, profilesErr))
 	}
 
 	checks = append(checks, packageCategories(ctx))

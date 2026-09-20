@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"phi/internal/build"
+	"phi/internal/external"
 	"phi/internal/tokens"
 )
 
@@ -34,6 +35,13 @@ type Entry struct {
 	Category Category
 	// Update: available version if any (only Check queries this).
 	Update string
+	// Tier and Status are populated only by ManagerExternal (empty string
+	// for every other producer): Tier is one of TC/T2/T3/T4, Status is
+	// external.Entry's "ok" | "missing" | "changed" | "unverified". Adding
+	// them here is backwards compatible with the QML consumer, which reads
+	// only Name, Version and Category today.
+	Tier   string
+	Status string
 }
 
 // phiPackageName: regex for "phi" and "phi-<component>" (shared with doctor).
@@ -189,10 +197,14 @@ const (
 	ManagerAppImage Manager = "appimage"
 	ManagerNPM      Manager = "npm"
 	ManagerFlatpak  Manager = "flatpak"
+	// ManagerExternal is declared, non-official software (tiers TC/T2/T3/
+	// T4) recorded in profiles/*/external.txt — distinct from T0 (pacman)
+	// and T1 (phi), which pacman already tracks.
+	ManagerExternal Manager = "external"
 )
 
 // Managers lists managers in render order.
-var Managers = []Manager{ManagerPhi, ManagerPacman, ManagerAUR, ManagerNPM, ManagerFlatpak, ManagerAppImage}
+var Managers = []Manager{ManagerPhi, ManagerPacman, ManagerAUR, ManagerNPM, ManagerFlatpak, ManagerAppImage, ManagerExternal}
 
 // ManagerListing is one manager's package listing.
 type ManagerListing struct {
@@ -233,8 +245,70 @@ func ListManager(ctx context.Context, m Manager) (ManagerListing, error) {
 	case ManagerFlatpak:
 		return ManagerListing{Manager: m, Implemented: false,
 			Note: "not implemented — list with `flatpak list --app`"}, nil
+
+	case ManagerExternal:
+		entries, err := ListExternal(ctx)
+		return ManagerListing{Manager: m, Implemented: true, Entries: entries,
+			Note: "TC/T2/T3/T4 declared in profiles/*/external.txt"}, err
 	}
 	return ManagerListing{Manager: m}, nil
+}
+
+// externalConfig resolves the phios-dotfiles checkout, the current host and
+// its declared profiles, and the home directory — the impure inputs
+// external.Audit needs but never gathers itself, since pkg already shells
+// out to pacman and is where this kind of host detection belongs.
+func externalConfig() (external.Config, error) {
+	root, err := tokens.Root()
+	if err != nil {
+		return external.Config{}, err
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return external.Config{}, err
+	}
+	if i := strings.IndexByte(host, '.'); i >= 0 {
+		host = host[:i]
+	}
+	profiles, err := external.ResolveProfiles(root, host)
+	if err != nil {
+		return external.Config{}, err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return external.Config{}, err
+	}
+	return external.Config{Root: root, Profiles: profiles, Home: home}, nil
+}
+
+// Audit runs internal/external's drift, leak and integrity checks for the
+// current host. `phi doctor` calls the same function directly (internal/
+// doctor/external.go), so there is one implementation and two callers.
+func Audit(ctx context.Context) (external.Report, error) {
+	cfg, err := externalConfig()
+	if err != nil {
+		return external.Report{}, err
+	}
+	return external.Audit(ctx, cfg)
+}
+
+// ListExternal reports every declared external.txt entry with its audited
+// status, in the shape `phi pkg list --manager external` renders.
+func ListExternal(ctx context.Context) ([]Entry, error) {
+	report, err := Audit(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Entry, 0, len(report.Entries))
+	for _, e := range report.Entries {
+		// Version carries Ref (the pinned version or image digest) rather
+		// than being left blank: for a declared entry, Ref is the closest
+		// analogue to pacman's installed version. Category is left at its
+		// zero value on purpose — Category is the closed T0/AUR/T4/
+		// phi-packages set pkgReport renders, and external isn't a member.
+		out = append(out, Entry{Name: e.Name, Version: e.Ref, Tier: e.Tier, Status: e.Status})
+	}
+	return out, nil
 }
 
 func appImagesDir() string {
