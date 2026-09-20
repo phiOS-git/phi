@@ -1,8 +1,5 @@
-// Package pkg answers: what is installed, in which of the four package
-// categories (T0/AUR/T4/phi-packages), and what has an update? It reuses
-// the same pacman queries internal/doctor/packages.go already runs, rather
-// than reimplementing the category split — doctor needs counts only; this
-// package needs the actual names.
+// Package pkg lists installed packages by category and checks for updates
+// using pacman queries shared with internal/doctor.
 package pkg
 
 import (
@@ -20,9 +17,7 @@ import (
 	"phi/internal/tokens"
 )
 
-// Category is one of the four package groups: T0 (Arch core/extra, default),
-// AUR (user-built), T4 (manual builds, outside pacman), and phi-packages
-// (this project's own).
+// Category is one of four package groups: T0, AUR, T4, phi-packages.
 type Category string
 
 const (
@@ -37,20 +32,11 @@ type Entry struct {
 	Name     string
 	Version  string
 	Category Category
-	// Update is the available version if pacman -Qu reports one for this
-	// package, "" otherwise. Never populated by List — only Check queries
-	// this, since it needs a synced pacman database (pacman -Sy, which
-	// touches the machine) to mean anything current; List works from the
-	// local db alone.
+	// Update: available version if any (only Check queries this).
 	Update string
 }
 
-// phiPackageName matches this project's own naming convention
-// (phi-packages/README.md: "phi, phi-<component>") — the identical regex
-// internal/doctor/packages.go already uses, not copied independently: a
-// second copy that drifted from that one would make doctor's "package
-// categories" check and this package disagree about what counts as a phi
-// package for no reason.
+// phiPackageName: regex for "phi" and "phi-<component>" (shared with doctor).
 var phiPackageName = regexp.MustCompile(`^phi(-.+)?$`)
 
 const cmdTimeout = 10 * time.Second
@@ -69,11 +55,7 @@ func run(ctx context.Context, name string, args ...string) (output string, avail
 	return strings.TrimSpace(buf.String()), true, err
 }
 
-// List reports every explicitly-installed package (pacman -Qe), split into
-// T0/AUR/phi-packages. T4 is never populated: T4 packages are built and
-// installed outside pacman's database, so no query can see them. Callers
-// should interpret T4Unverifiable as "cannot check" rather than "checked,
-// found none".
+// List reports explicitly-installed packages split by category (T4 unverifiable).
 func List(ctx context.Context) (entries []Entry, t4Unverifiable bool, err error) {
 	explicitOut, avail, runErr := run(ctx, "pacman", "-Qe")
 	if !avail {
@@ -116,13 +98,7 @@ func List(ctx context.Context) (entries []Entry, t4Unverifiable bool, err error)
 	return entries, true, nil
 }
 
-// Check runs List, then overlays pacman -Qu's available-update column onto
-// each entry. It does NOT run `pacman -Sy` first (that touches the sync
-// databases — a real, if read-only-ish, network operation this step's own
-// card reserves for `phi update`, not a passive "list categories" verb) —
-// so a result here is only as fresh as the last sync `phi update` (or the
-// user's own pacman) performed. Reported plainly via Stale below, never
-// silently assumed current.
+// Check runs List, overlays pacman -Qu updates (does NOT sync databases).
 type CheckResult struct {
 	Entries        []Entry
 	T4Unverifiable bool
@@ -156,24 +132,16 @@ func Check(ctx context.Context) (CheckResult, error) {
 	return CheckResult{Entries: entries, T4Unverifiable: t4, Stale: stale}, nil
 }
 
-// ============================================================
-// settings-overhaul batch J — the Updates settings-panel section wants
-// "System state" (component versions) split from "Packages" (one list per
-// package manager). Both are read-only; `phi update` stays the only thing
-// that changes anything and it runs from a terminal, never from here.
-// ============================================================
+// System state (component versions) split from Packages (by manager) — both read-only.
 
-// Component is one versioned piece of phiOS for the "System state" block.
+// Component is a versioned part of phiOS for system state reporting.
 type Component struct {
 	Name    string
 	Version string
 	Source  string // how the version was read — "build", "pacman -Q", "git describe"
 }
 
-// SystemState reports the versions of phiOS (the dotfiles checkout), phi
-// (baked in at build), and each installed phi-* package. Every lookup is
-// best-effort: a component whose version cannot be read is simply omitted,
-// never guessed.
+// SystemState reports phiOS component versions (best-effort lookup).
 func SystemState(ctx context.Context) []Component {
 	var out []Component
 
@@ -185,8 +153,7 @@ func SystemState(ctx context.Context) []Component {
 		}
 	}
 
-	// The installed phi-* packages (phi-shell and any others) — the real
-	// "phi-packages" version on this machine is whatever pacman has.
+	// Installed phi-* packages (as reported by pacman).
 	if entries, _, err := List(ctx); err == nil {
 		for _, e := range entries {
 			if e.Category == CategoryPhiPackages && e.Name != "phi" {
@@ -212,7 +179,7 @@ func gitDescribe(ctx context.Context, dir string) string {
 	return strings.TrimSpace(buf.String())
 }
 
-// Manager is a package-manager name for `phi pkg list --manager <name>`.
+// Manager is a package manager name.
 type Manager string
 
 const (
@@ -224,10 +191,10 @@ const (
 	ManagerFlatpak  Manager = "flatpak"
 )
 
-// Managers is the fixed order the Updates section renders.
+// Managers lists managers in render order.
 var Managers = []Manager{ManagerPhi, ManagerPacman, ManagerAUR, ManagerNPM, ManagerFlatpak, ManagerAppImage}
 
-// ManagerListing is one manager's slice of `phi pkg list --manager`.
+// ManagerListing is one manager's package listing.
 type ManagerListing struct {
 	Manager     Manager
 	Implemented bool
@@ -235,10 +202,7 @@ type ManagerListing struct {
 	Entries     []Entry
 }
 
-// ListManager returns the installed packages for one manager. pacman / aur /
-// phi are filtered out of the existing pacman-backed List; appimage scans
-// ~/Applications; npm and flatpak are explicit "not implemented" markers
-// (their real listings are a later pass — the shell renders the Note).
+// ListManager returns installed packages for a given manager.
 func ListManager(ctx context.Context, m Manager) (ManagerListing, error) {
 	switch m {
 	case ManagerPacman, ManagerAUR, ManagerPhi:
