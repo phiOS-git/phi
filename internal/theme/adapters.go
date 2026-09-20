@@ -8,9 +8,8 @@ import (
 	"strings"
 )
 
-// Class is a themed target's reload class (design/adapters.txt, master plan
-// §6.7): A reloads hot, B reconfigures at runtime, C needs a restart that
-// Set never performs itself.
+// Class is a themed target's reload class: A reloads hot, B reconfigures at
+// runtime, C needs a restart that Set never performs itself.
 type Class string
 
 const (

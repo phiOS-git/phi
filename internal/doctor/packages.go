@@ -9,19 +9,15 @@ import (
 
 // phiPackageName matches this project's own naming convention
 // (phi-packages/README.md: "phi, phi-<component>") — a heuristic, since
-// pacman has no query that answers "which sync repository did this come
-// from" for an already-installed package; flagged as such rather than
-// hidden, the same way S-04 flagged its device-name heuristics.
+// pacman has no query that reports which sync repository a package came from.
+// Flagged as such rather than hidden.
 var phiPackageName = regexp.MustCompile(`^phi(-.+)?$`)
 
-// packageCategories audits what pacman actually has installed against
-// CLAUDE.md rule 6 (T0 + phi-packages only; AUR/T4 deferred under Q-01):
-// `pacman -Qm` lists foreign packages, meaning anything pacman did not get
-// from a configured sync repository. After S-11 registers [phi] as a sync
-// repo, a non-empty result here is exactly what that rule forbids — an
-// AUR or manually built package on the machine. This says nothing about
-// which declared packages are missing; the dotfiles-drift check already
-// owns that, so this does not repeat it.
+// packageCategories audits what pacman has installed. Only T0 (Arch) and
+// phi-packages are allowed; AUR and T4 packages are policy violations. Uses
+// `pacman -Qm` to find foreign packages (anything not from a sync repo).
+// Does not check which declared packages are missing; that's dotfiles-drift's
+// job.
 func packageCategories(ctx context.Context) Check {
 	const name = "package categories"
 
@@ -56,7 +52,7 @@ func packageCategories(ctx context.Context) Check {
 		}
 	}
 
-	detail := fmt.Sprintf("foreign (AUR/T4, should be none — Q-01 deferred): %d; phi-packages: %d; other T0 explicit: %d",
+	detail := fmt.Sprintf("foreign (AUR/T4, should be none): %d; phi-packages: %d; other T0 explicit: %d",
 		len(foreign), phiCount, otherCount)
 	if len(foreign) > 0 {
 		detail += "\n  " + strings.Join(foreign, "\n  ")

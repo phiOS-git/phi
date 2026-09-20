@@ -12,17 +12,14 @@ import (
 	"time"
 )
 
-// `phi agent ask` — a quick question in
-// the terminal, a thin wrapper onto the ALREADY-RUNNING A1 service. No cold
-// start: it talks to opencode's loopback HTTP API on the port
-// phi-agent-a1.service serves. The session is ephemeral — created, used,
-// and DELETEd — so it never appears in the panel list and never reaches
-// memory (§10.2, V-15). Deleting the session (rather than filtering it
-// client-side) satisfies both "excluded from the list" and "excluded from
-// memory" with nothing for the panel to cooperate on.
+// `phi agent ask` is a quick terminal question, a thin wrapper onto the
+// already-running A1 service. No cold start: it talks to opencode's loopback
+// HTTP API. The session is ephemeral — created, used, deleted — so it never
+// appears in the panel list or reaches memory. This satisfies both constraints
+// with nothing for the panel to cooperate on.
 //
-// Fail-closed: if the A1 service is not up, this fails explicitly (§13,
-// §4.7) — it never starts an engine of its own.
+// Fail-closed: if the A1 service is not up, this fails explicitly without
+// starting its own engine.
 
 // AskConfig is the small set of knobs `phi agent ask` needs.
 type AskConfig struct {

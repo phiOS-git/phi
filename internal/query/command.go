@@ -6,16 +6,10 @@ import (
 	"strings"
 )
 
-// CommandProvider implements the app-vs-command heuristic S-33's card asks
-// for and names Q-74: "single token = application, token with arguments =
-// command." A single token is left entirely to ApplicationsProvider (and
-// to the shell falling back to `phi-<name>` on PATH) — this
-// provider only fires once there are arguments, and only when the first
-// word is a real, resolvable command, so a plain English phrase typed by
-// mistake never gets offered as "run this in a shell." Confirming Q-74
-// with the user was this step's own instruction; implemented as stated,
-// flagged for cheap veto rather than blocking on it (no password vault or
-// other genuinely undecided input is at stake here).
+// CommandProvider implements the app-vs-command heuristic: single token is
+// an application (left to ApplicationsProvider), multiple tokens form a
+// command. This provider only fires when the first word is a real, resolvable
+// command on PATH, so plain English phrases never get offered as shell commands.
 type CommandProvider struct{}
 
 func (CommandProvider) Name() string { return "command" }

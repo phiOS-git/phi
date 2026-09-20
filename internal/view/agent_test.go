@@ -3,9 +3,8 @@ package view
 import "testing"
 
 // The panel reads `phi agent memory list` redirected (not a TTY). Every
-// proposal must come back as one intact line, whatever characters the agent
-// put in the file name — a proposal that silently disappears is the failure
-// §8.6 forbids.
+// proposal must come back as one intact line, whatever characters are in
+// the file name.
 func TestAgentMemoryListStructured(t *testing.T) {
 	props := []string{"2026-09-09 durable fact.md", "adr:094 note.md", "plain.md"}
 	got := AgentMemoryList("study", props, false)

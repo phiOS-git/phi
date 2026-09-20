@@ -5,12 +5,10 @@ import (
 	"strings"
 )
 
-// AskAgentProvider is the "ask ai agent" category the runner
-// category order names (rank.go's own header). Like WebSearchProvider, it
-// never answers itself — the A1 service can take real time to respond and
-// this provider must stay inside providerTimeout — it only offers to hand
-// the literal query to `phi agent ask`, which prints the answer in a
-// terminal (§10.2, `phi/internal/cli/agent.go`'s runAgentAsk).
+// AskAgentProvider is the "ask ai agent" category. Like WebSearchProvider,
+// it never answers itself — the A1 service can take real time to respond
+// and this provider must stay inside providerTimeout. It only offers to hand
+// the literal query to `phi agent ask`.
 type AskAgentProvider struct{}
 
 func (AskAgentProvider) Name() string { return "agent" }

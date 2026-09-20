@@ -10,11 +10,8 @@ import (
 )
 
 // QueryResults renders `phi query`'s ranked results. JSON when redirected
-// — phi-shell's Launcher is the one real consumer, and a launcher invoked
-// on every keystroke (phi/CLAUDE.md's cold-start requirement) needs a
-// format it can parse without ambiguity, not columns meant for a human
-// eye. A plain list on a terminal, for the manual testing S-33's own card
-// asks for ("validate phi query in a terminal... before any GUI work").
+// — phi-shell's Launcher is the one real consumer. A plain list on a
+// terminal for manual testing of the ranking.
 func QueryResults(results []query.Result, styled bool) string {
 	if !styled {
 		data, err := json.Marshal(results)

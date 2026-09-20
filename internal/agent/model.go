@@ -12,11 +12,9 @@ import (
 )
 
 // The agent data model, on disk under A1's XDG data directory. Two
-// orthogonal axes:
-// personalities (a system prompt the user owns) and projects (a directory of
-// instructions, materials, memory, archive, transcripts, proposals, output).
-// A1 only — A2 has no memory and no project notion in this sense (§8.6,
-// ADR 096).
+// orthogonal axes: personalities (a system prompt the user owns) and projects
+// (a directory of instructions, materials, memory, archive, transcripts,
+// proposals, output). A1 only — A2 has no memory and no project notion.
 //
 //	<A1 data dir>/
 //	  memoria.md                    system memory        [agent: read-only]
@@ -103,8 +101,8 @@ func activeMarkerPath() (string, error) {
 // Ensure creates the skeleton and the two seed personalities if they are
 // absent, and migrates the pre-delta flat `personalita/<name>.md` layout to
 // `personalita/<name>/prompt.md`. Idempotent: existing files are never
-// overwritten (the user owns the prompts). This is §8.3's "minimal initial
-// state for a clean install", not a reset.
+// overwritten (the user owns the prompts). This is minimal initial state
+// for a clean install, not a reset.
 func (m *Model) Ensure() (created []string, err error) {
 	if err := os.MkdirAll(m.personalitaDir(), 0o755); err != nil {
 		return nil, err
@@ -260,8 +258,8 @@ func (m *Model) HasPersonality(name string) bool {
 }
 
 // WritePersonality creates or replaces a personality's system prompt. The
-// panel calls this (it runs outside the containment and is the user /
-// D-08); `personalita/` stays read-only inside the mount.
+// panel calls this (it runs outside the containment). The personalities/
+// directory stays read-only inside the containment.
 func (m *Model) WritePersonality(name, prompt string) error {
 	if err := validName("personality", name); err != nil {
 		return err

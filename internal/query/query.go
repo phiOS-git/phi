@@ -1,7 +1,6 @@
-// Package query is phi's launcher backend (S-33, master plan §7.3, ADR
-// 018: ranking, providers and actions live here, the launcher in phi-shell
-// is a renderer only — it invokes `phi query` and draws what comes back,
-// it never ranks or decides an action for itself).
+// Package query is phi's launcher backend. Ranking, providers and actions
+// live here; the launcher in phi-shell is a renderer only — it invokes
+// `phi query` and draws what comes back, never deciding actions itself.
 //
 // Cold start is the constraint that shapes everything below (phi/CLAUDE.md:
 // "the launcher invokes it on every keystroke... order of milliseconds"):
@@ -9,22 +8,19 @@
 // persistent server queried repeatedly. Every provider that shells out
 // therefore runs concurrently and is bounded by providerTimeout — a slow
 // or hung provider degrades that one provider's results, never the whole
-// query, and never blocks typing (S-33 AGENT: "results arrive with
-// different latencies and must NEVER block typing" — met here by never
-// letting one provider hold up the others, not by streaming partial
-// results out of one process invocation, which a run-once-and-exit CLI has
-// no clean way to do).
+// query. Results must never block typing, achieved by never letting one
+// provider hold up the others, not by streaming partial results (a
+// run-once-and-exit CLI cannot do that cleanly).
 //
 // Open windows is the one provider that could, in principle, read the
 // state phi-shell's own ToplevelManager already holds live — reading it
 // through some IPC back into the running shell instance was considered and
 // rejected: it would mean `phi query` behaves differently depending on
-// whether a shell happens to be running, breaks testability (this
-// package's own tests construct providers and call them directly, with no
-// shell in the loop), and quietly moves ranking authority into whichever
-// side answers first, undermining ADR 018 rather than applying it. The
-// windows provider instead shells out to `hyprctl clients -j` itself,
-// exactly like every other provider here — phi stays self-contained.
+// whether a shell happens to be running. Testability matters: this package's
+// own tests construct providers and call them directly with no shell in the
+// loop. Ranking authority must never migrate between components. The
+// windows provider instead shells out to `hyprctl clients -j` itself, exactly
+// like every other provider — phi stays self-contained.
 package query
 
 import (
@@ -55,8 +51,8 @@ type Result struct {
 // Action is what selecting a Result does. Kind is a closed set the shell
 // switches on; Data carries whatever that Kind needs. System-level actions
 // (lock, suspend, volume, brightness, screenshot) are deliberately never
-// phi verbs (ADR 021's own counter-examples) — ActionSystem hands the
-// shell a plain action name and the shell itself performs it.
+// phi verbs — ActionSystem hands the shell a plain action name and the shell
+// itself performs it.
 type Action struct {
 	Kind string            `json:"kind"`
 	Data map[string]string `json:"data"`
@@ -72,21 +68,18 @@ const (
 	ActionSystem         = "system"         // Data["action"]: lock | suspend | hibernate | logout | reboot | shutdown
 	ActionChangeDir      = "changeDir"      // Data["path"]: open a terminal there
 	ActionPushView       = "pushView"       // Data["view"]: sub-view navigation
-	// ActionLoading marks a transient result a provider could not answer
-	// YET, not one it will never answer (nil/no result stays the signal
-	// for that) — added for CurrencyProvider (currency.go's own header has
-	// the real bug this closes), generic so any future slow provider can
-	// use the same shape instead of inventing another. Not actionable:
-	// the shell should not wire selecting one to anything, only re-query
-	// the same text shortly to see if a real result has arrived.
+	// ActionLoading marks a transient result a provider could not answer yet,
+	// distinct from a result it will never provide (nil). Useful for slow
+	// providers like currency conversion. Not actionable: the shell should
+	// only re-query to see if a real result has arrived.
 	ActionLoading = "loading"
 )
 
 // Provider produces candidate Results for a query. q is already trimmed.
-// An empty q means nothing has been typed yet; most providers should
-// return nothing rather than guess at a default listing — frecency-only
-// browsing on an empty query is a real feature but not this step's DONE
-// WHEN, which is about ranking real queries correctly.
+// An empty q means nothing has been typed yet; most providers should return
+// nothing rather than guess at a default listing. Frecency-only browsing on
+// an empty query is supported by others; this is about ranking real queries
+// correctly.
 type Provider interface {
 	Name() string
 	Query(ctx context.Context, q string) []Result
@@ -100,13 +93,11 @@ type Provider interface {
 // retuning once this runs on real hardware.
 const providerTimeout = 120 * time.Millisecond
 
-// Providers is the full provider set S-33 wires up. A function, not a
-// package-level slice: tests construct their own smaller sets directly
-// (see rank_test.go, calculator_test.go) rather than going through this,
-// so it has exactly one caller — internal/cli's query verb. phiVerbs is
-// PhiCommandProvider's recognised verb set, built by that caller from
-// view.Commands (see phicommand.go's own header for why it cannot be built
-// here instead) — nil or empty simply turns that provider into a no-op.
+// Providers returns the full provider set. A function, not a package-level
+// slice: tests construct smaller sets directly (see rank_test.go,
+// calculator_test.go), so this has exactly one caller — internal/cli's query
+// verb. phiVerbs is PhiCommandProvider's recognised verb set, built by that
+// caller from view.Commands. Nil or empty simply disables that provider.
 func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 	return []Provider{
 		CalculatorProvider{},
@@ -127,17 +118,12 @@ func Providers(frecency *Frecency, phiVerbs map[string]bool) []Provider {
 	}
 }
 
-// prefixProviders maps a runner-bar prefix keyword (Requested: "Add
-// prefix feature to the runner bar... writing 'web <anything>' will
-// automatically set the 'search on web' first") to the provider Name()(s)
-// it routes to. This map only decides ROUTING; the actual keyword parsing
-// stays inside each named provider (ADR 018: providers, not this layer,
-// own their own syntax) — phicommand.go, websearch.go, command.go and
-// calculator.go each already strip their own leading keyword before
-// matching, and sitesearch.go matches its four keywords itself. "convert"
-// needs no entry of its own here beyond routing to "calculator": its
-// keyword-stripping already existed before this feature, inside
-// mathx.ParseConversion.
+// prefixProviders maps a runner-bar prefix keyword to the provider Name()(s)
+// it routes to. This map only decides routing; actual keyword parsing stays
+// inside each provider. phicommand.go, websearch.go, command.go and
+// calculator.go each strip their own leading keyword, and sitesearch.go
+// matches its keywords itself. "convert" routes to "calculator", which
+// already has its own keyword-stripping via mathx.ParseConversion.
 var prefixProviders = map[string][]string{
 	"web":     {"websearch"},
 	"convert": {"calculator"},

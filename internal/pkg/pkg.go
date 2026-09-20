@@ -1,10 +1,8 @@
-// Package pkg answers "what is installed, in which of the four master plan
-// §15/CLAUDE.md categories, and what has an update" (S-45: phi pkg
-// list|check, and the Updates settings-panel section). It reuses the same
-// pacman queries internal/doctor/packages.go already runs for its own
-// "package categories" check, rather than a second implementation of the
-// same T0/AUR-T4/phi-packages split — that check only ever needed counts;
-// this package needs the actual names too.
+// Package pkg answers: what is installed, in which of the four package
+// categories (T0/AUR/T4/phi-packages), and what has an update? It reuses
+// the same pacman queries internal/doctor/packages.go already runs, rather
+// than reimplementing the category split — doctor needs counts only; this
+// package needs the actual names.
 package pkg
 
 import (
@@ -22,9 +20,9 @@ import (
 	"phi/internal/tokens"
 )
 
-// Category is one of the four groups CLAUDE.md rule 7 and master plan §15
-// name: T0 (core/extra, the default), AUR, T4 (manual build), and this
-// project's own phi-packages.
+// Category is one of the four package groups: T0 (Arch core/extra, default),
+// AUR (user-built), T4 (manual builds, outside pacman), and phi-packages
+// (this project's own).
 type Category string
 
 const (
@@ -71,16 +69,11 @@ func run(ctx context.Context, name string, args ...string) (output string, avail
 	return strings.TrimSpace(buf.String()), true, err
 }
 
-// List reports every explicitly-installed package (pacman -Qe — the same
-// "what did I actually ask for" set doctor's own check reads), split into
-// T0/AUR/phi-packages. T4 is NEVER populated here and never can be: a T4
-// package (master plan §2.2 tiering) is built and installed WITHOUT
-// pacman's own database ever recording it (`make install` or equivalent) —
-// there is no pacman query that can see software pacman was never told
-// about, unlike AUR (which still normally installs as a real, if
-// "foreign", pacman package pacman -Qm CAN see). Callers should read
-// T4Unverifiable, not an empty T4 slice, as "cannot check" rather than
-// "checked, found none".
+// List reports every explicitly-installed package (pacman -Qe), split into
+// T0/AUR/phi-packages. T4 is never populated: T4 packages are built and
+// installed outside pacman's database, so no query can see them. Callers
+// should interpret T4Unverifiable as "cannot check" rather than "checked,
+// found none".
 func List(ctx context.Context) (entries []Entry, t4Unverifiable bool, err error) {
 	explicitOut, avail, runErr := run(ctx, "pacman", "-Qe")
 	if !avail {

@@ -1,9 +1,8 @@
-// Package doctor composes the machine-shape checks `phi doctor` reports
-// (S-14, master plan §7.3, architettura §12.5): "is this machine in the
-// shape the repo expects." Each check degrades to Unknown rather than
-// guessing when the tool or privilege it needs is not available here — that
-// is what DONE WHEN's "honest" means: an unreachable check is reported as
-// unreachable, never silently dropped and never promoted to a false ok.
+// Package doctor composes the machine-shape checks `phi doctor` reports.
+// It answers: is this machine in the shape the repo expects? Each check
+// degrades to Unknown rather than guessing when the tool or privilege it
+// needs is not available. An unreachable check is reported as unreachable,
+// never silently dropped and never promoted to false ok.
 package doctor
 
 import (
@@ -18,9 +17,9 @@ import (
 )
 
 // Status is one check's verdict. Problem is the only one that makes
-// Report.ExitCode non-zero (S-14 AGENT: "usable from a timer") — Unknown
-// means the check could not run here, which is a fact about this
-// environment, not a red condition on the machine being examined.
+// Report.ExitCode non-zero, suitable for timer-driven callers. Unknown
+// means the check could not run here, a fact about the environment,
+// not a condition on the machine being examined.
 type Status string
 
 const (
@@ -52,14 +51,12 @@ func (r Report) ExitCode() int {
 	return 0
 }
 
-// Run composes every check, in the order the S-14 AGENT bullet lists them.
-// root/rootErr is tokens.Root()'s result: when the phios-dotfiles checkout
-// cannot be found, the checks that need it (dotfiles drift, service status)
-// report that plainly instead of doctor refusing to run at all — the other
-// checks (disk, systemd, SMART, package policy) need no checkout and stay
-// useful even on a machine where phios-dotfiles was never cloned. ctx bounds
-// every external command this package runs, so a stuck systemctl or
-// smartctl call cannot hang a timer-driven caller forever.
+// Run composes every check. root/rootErr is tokens.Root()'s result:
+// when phios-dotfiles cannot be found, checks that need it (drift, service)
+// report that plainly rather than refusing to run altogether. Other checks
+// (disk, systemd, SMART, packages) need no checkout and stay useful even on
+// machines where phios-dotfiles was never cloned. ctx bounds every external
+// command, so a stuck systemctl or smartctl call cannot hang the caller.
 func Run(ctx context.Context, root string, rootErr error) Report {
 	host := hostName()
 
@@ -131,11 +128,10 @@ func runTimeout(ctx context.Context, timeout time.Duration, name string, args ..
 }
 
 // readList reads a phios-dotfiles list file: one entry per line, truncated
-// at the first '#' and trimmed — bin/lib/common.sh's phios_read_list,
-// including the same lack of quote-awareness that function has (flagged
-// there at S-05, not fixed here either: no consumer of this file format has
-// ever needed a literal '#'). A missing file is an empty list, not an error:
-// most profiles do not declare every kind of list.
+// at the first '#' and trimmed. Mirrors bin/lib/common.sh's phios_read_list,
+// with the same lack of quote-awareness (no consumer has needed a literal
+// '#' in an entry). A missing file is an empty list, not an error: most
+// profiles do not declare every kind of list.
 func readList(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {

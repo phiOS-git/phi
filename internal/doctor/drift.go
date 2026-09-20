@@ -13,13 +13,10 @@ import (
 // checks in this package make.
 const driftTimeout = 30 * time.Second
 
-// dotfilesDrift shells out to bin/phios-install --check, the
-// tool that already owns "is the repository's plan satisfied on this
-// machine" — doctor composes it rather than reimplementing profile
-// resolution and package/file planning a second time in Go. Exit codes are
-// phios-install's own documented contract: 0 clean, 1 drift, 2 error (e.g.
-// this cannot run at all on macOS's BSD realpath, per S-05's note — that
-// failure surfaces here as Unknown, not as a fabricated Problem).
+// dotfilesDrift shells out to bin/phios-install --check, which already owns
+// repository plan verification. Doctor composes it rather than reimplementing
+// profile resolution and package/file planning in Go. Exit codes: 0 clean,
+// 1 drift, 2 error. Failures surface as Unknown, not fabricated Problem.
 func dotfilesDrift(ctx context.Context, root string) Check {
 	const name = "dotfiles drift"
 	script := filepath.Join(root, "bin", "phios-install")

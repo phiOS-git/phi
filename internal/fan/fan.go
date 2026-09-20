@@ -9,11 +9,10 @@
 // (extra/T0, already installed) and the in-kernel nct6775 driver family
 // are both official — no rule-2 violation.
 //
-// Discovery is by FILE PRESENCE (a pwmN + pwmN_enable pair under any
-// /sys/class/hwmon/hwmonN), never a hardcoded chip name — this project's
-// own ADR 074 stance on host-specific branching, applied to hardware
-// instead of a Config.Capabilities flag, so the same code also works on
-// razer/mini if either turns out to expose one.
+// Discovery is by file presence (a pwmN + pwmN_enable pair under any
+// /sys/class/hwmon/hwmonN), never a hardcoded chip name. This avoids
+// host-specific branching, so the same code works on any machine that
+// exposes a pwm channel.
 //
 // Profiles: silent/default/heavy write pwmN_enable=1 (the ABI's universal
 // "manual" value) then a fixed 0-255 duty-cycle byte to pwmN — the ABI

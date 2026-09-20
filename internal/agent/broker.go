@@ -17,20 +17,16 @@ import (
 	"time"
 )
 
-// The broker is the level-3 credential measure: the
-// provider key is NEVER in the agent process. opencode (inside the
-// containment) is configured with a provider whose baseURL points at this
-// broker on loopback, and speaks to it in clear. The broker — outside
-// the containment — holds the key, adds it to the outbound request, streams
-// the response straight back, meters consumption, and applies a local rate
-// limit. If it is down, opencode gets connection-refused and no agent works
-// (§6.2 "se il servizio è fermo, nessun agente funziona", consistent with
-// the fail-closed rule §4.7).
+// The broker is the level-3 credential measure: the provider key is NEVER
+// in the agent process. opencode (inside the containment) is configured to
+// speak to this broker on loopback in clear. The broker — outside the
+// containment — holds the key, adds it to outbound requests, streams
+// responses back, meters consumption, and applies local rate limits. If it
+// is down, agents fail closed: opencode gets connection-refused.
 //
-// It is deliberately provider-agnostic: no planning document names the
-// provider, and §2.1 makes neutrality a goal. upstream, the auth header, and
-// any extra headers all come from broker.json; the key comes from a file
-// outside every repository.
+// It is deliberately provider-agnostic: upstream, auth headers, and extra
+// headers all come from broker.json; the key comes from a file outside every
+// repository.
 
 // BrokerConfig is <ConfigDir>/broker.json. Ship broker.example.json, copy,
 // edit. Nothing secret belongs in it — the key is a separate file.
@@ -285,10 +281,8 @@ func (b *Broker) Summary() string {
 }
 
 // handler builds the reverse proxy. FlushInterval < 0 makes ReverseProxy
-// flush to the client immediately after every read from upstream — this is
-// the documented way to pass an SSE / chunked stream through without
-// buffering (§6.2 "deve trasferire lo streaming senza bufferizzare"), and
-// V-09 is exactly this property.
+// flush to the client immediately after every read from upstream — the
+// documented way to pass SSE / chunked streams through without buffering.
 func (b *Broker) handler() http.Handler {
 	rp := &httputil.ReverseProxy{
 		FlushInterval: -1,

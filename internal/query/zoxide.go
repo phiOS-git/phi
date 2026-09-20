@@ -6,11 +6,9 @@ import (
 	"strings"
 )
 
-// ZoxideProvider is the directory/project-jump provider (S-33 AGENT:
-// "directory/project jump via zoxide"). zoxide is already in
-// profiles/base/packages.txt (pre-approved, master plan §15) for shell
-// integration; this reuses its own database rather than reimplementing
-// frecency-over-paths a second time.
+// ZoxideProvider is the directory/project-jump provider. zoxide is already
+// in profiles/base/packages.txt for shell integration; this reuses its
+// database rather than reimplementing frecency-over-paths.
 type ZoxideProvider struct{}
 
 func (ZoxideProvider) Name() string { return "directory" }

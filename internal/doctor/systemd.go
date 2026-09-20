@@ -7,11 +7,8 @@ import (
 	"strings"
 )
 
-// failedUnits queries systemd directly — the boundary bin/lib/system.sh's
-// phios_services_report explicitly never crosses ("querying systemd state
-// is exactly the boundary this installer does not cross... at S-05 or
-// ever"). phi doctor is a different tool with a different contract (S-14
-// AGENT): asking systemd how it is doing is this command's entire job.
+// failedUnits queries systemd directly. Unlike the installer, which never
+// crosses into systemd state, doctor makes that query its entire job.
 func failedUnits(ctx context.Context) Check {
 	const name = "failed systemd units"
 

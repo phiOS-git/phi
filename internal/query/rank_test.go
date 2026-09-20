@@ -2,13 +2,10 @@ package query
 
 import "testing"
 
-// TestMatchWeightTiers is the off-machine substitute S-33's own card asks
-// for: "validate phi query in a terminal against fzf BEFORE any GUI work."
-// This agent cannot run fzf or generate real usage, so these are the
-// twenty-queries-the-user-actually-types the card wants, guessed at from
-// what a launcher on this project's own machines would plausibly see —
-// flagged for cheap veto and extension once the user reports what actually
-// ranked wrong (S-33's real VERIFY, on real hardware).
+// TestMatchWeightTiers validates ranking with fixed cases, since this agent
+// cannot generate real usage. These are representative queries that the
+// launcher would plausibly see, flagged for extension once the user reports
+// what actually ranked wrong.
 func TestMatchWeightTiers(t *testing.T) {
 	cases := []struct {
 		title, q string

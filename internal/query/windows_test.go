@@ -2,11 +2,9 @@ package query
 
 import "testing"
 
-// Fixture shape matches real hyprctl clients -j output (the same fields
-// S-24's PROGRESS row captured from a real `hyprctl clients` run on
-// razer for the Steam window rule), trimmed to what this provider reads —
-// extra real-world fields (workspace, floating, pid, ...) are included
-// here too, to prove unknown fields do not break parsing.
+// Fixture shape matches real hyprctl clients -j output, trimmed to what this
+// provider reads. Extra real-world fields (workspace, floating, pid, ...) are
+// included to prove unknown fields do not break parsing.
 const fixtureHyprctlClients = `[
   {
     "address": "0x55f2a1b2c3d4",

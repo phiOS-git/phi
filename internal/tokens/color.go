@@ -9,8 +9,8 @@ import (
 // Contrast returns the WCAG 2.x contrast ratio between two #rrggbb (or
 // #rrggbbaa, alpha ignored) colour tokens. This is the exact method tokens.
 // dark.sh and tokens.light.sh cite in their own provenance comments ("Ratios
-// are WCAG 2.x against bg-0") — not an OKLab proxy: §6.2's 4.5:1 floor is a
-// WCAG AA figure and only means what it says under WCAG's own formula.
+// are WCAG 2.x against bg-0") — not an OKLab proxy. The 4.5:1 floor is a
+// WCAG AA figure, used under WCAG's own formula.
 func Contrast(a, b string) (float64, error) {
 	la, err := relativeLuminance(a)
 	if err != nil {

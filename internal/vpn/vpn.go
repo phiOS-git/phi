@@ -5,13 +5,11 @@
 // repository, because a WireGuard config holds a private key and an
 // endpoint address and the GitHub remote is public (CLAUDE.md rule 5/6).
 //
-// ADR 067 analog, the same contract Services/Tailscale.qml states for
-// itself: NOTHING in this package ever returns or logs an endpoint, an
-// allowed-IPs range, or any peer address. It is enforced structurally —
-// TunnelStatus has no field for one, and the `wg show` parser reads only
-// the handshake age and the byte counters, skipping the endpoint and
-// allowed-ips columns entirely. A future field that carried an address
-// would be the violation, not anything a caller did.
+// No endpoint, allowed-IPs, or peer address is ever returned or logged.
+// This is enforced structurally: TunnelStatus has no address field, and the
+// `wg show` parser reads only handshake age and byte counters, skipping
+// endpoint and allowed-ips columns. Future fields carrying addresses would
+// be violations structurally.
 //
 // Privilege: `wg-quick up/down` needs root. `phi vpn` calls it through
 // `sudo -n` (non-interactive), which fails cleanly with a clear message
@@ -184,8 +182,7 @@ func configPath(name string) (string, error) {
 	return filepath.Join(dir, name+".conf"), nil
 }
 
-// TunnelStatus is the safe-to-show state of one tunnel. No address fields,
-// by construction (ADR 067 analog).
+// TunnelStatus is the safe-to-show state of one tunnel. No address fields.
 type TunnelStatus struct {
 	Name         string
 	Up           bool

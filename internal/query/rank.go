@@ -5,11 +5,8 @@ import (
 	"strings"
 )
 
-// matchWeight is a plain, documented heuristic — not a document-fixed
-// formula, since none exists anywhere in this project's plan; S-33's own
-// AGENT bullet explicitly calls ranking "the risky, iterative part" and
-// asks for it to be validated in a terminal before any GUI work, which is
-// exactly what rank_test.go below does with fixed cases rather than real
+// matchWeight is a plain, documented heuristic — not a formula set in stone.
+// Ranking is validated via fixed test cases in rank_test.go rather than real
 // usage this agent cannot generate. Tiers, highest first:
 //
 //	100  Title is exactly the query (case-insensitive)

@@ -9,11 +9,10 @@ import (
 	"strings"
 )
 
-// Three-level memory. Each level has one
-// `memoria.md` (always in context) and one writable `proposte/`
-// directory. The agent can never write any `memoria.md` — the read-only
-// mount enforces it at every level (ADR 094, principle unchanged). The
-// client, outside the containment, is the only writer, via AcceptProposal.
+// Three-level memory. Each level has one `memoria.md` (always in context)
+// and one writable `proposte/` directory. The agent can never write any
+// `memoria.md` — the read-only mount enforces it at every level. The client,
+// outside the containment, is the only writer via AcceptProposal.
 //
 //	level        memoria.md                              proposte/
 //	system       <root>/memoria.md                       <root>/proposte/

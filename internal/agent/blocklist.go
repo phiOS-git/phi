@@ -180,7 +180,7 @@ func ValidateFolderOfInterest(path string) error {
 }
 
 // ValidateCodeDir checks a path is safe to mount READ-WRITE as A2's single
-// working directory (§4.4 revised). The path must exist and be a directory.
+// working directory. The path must exist and be a directory.
 func ValidateCodeDir(path string) (string, error) {
 	abs, err := resolveDir(path)
 	if err != nil {

@@ -10,16 +10,11 @@ import (
 	"phi/internal/state"
 )
 
-// Frecency is the storage shape S-33 was left to define (state.go's own
-// Keys map comment names this step explicitly: launcher frecency is a
-// collection, not a phi state scalar, same reasoning as S-30's
-// notification history and S-32's clipboard history). One JSON file,
-// $XDG_STATE_HOME/phi/frecency.json — the same directory internal/state
-// owns, reusing state.Dir() for the path resolution rather than
-// duplicating it, but a file of its own, outside state's closed Keys set:
-// unlike theme.variant or the runtime toggles, this has exactly one writer
-// (phi query's own selection-recording call) and needs no defined-keys
-// rejection the way a user-facing `phi state set` does.
+// Frecency stores selection history as one JSON file at
+// $XDG_STATE_HOME/phi/frecency.json. Unlike phi's state scalars (theme.variant,
+// toggles), this is a collection with one writer (phi query) and needs no
+// defined-keys validation — launcher frecency, like notification and clipboard
+// history, is not part of the state key set.
 type frecencyEntry struct {
 	Count    int   `json:"count"`
 	LastUsed int64 `json:"lastUsed"` // unix seconds

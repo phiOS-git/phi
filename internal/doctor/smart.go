@@ -15,9 +15,8 @@ import (
 // crypt mapping) in this sweep before this exclusion existed.
 var nonPhysicalBlockDevice = []string{"loop", "ram", "zram", "sr", "dm", "md"}
 
-// smartStatus enumerates real disks from /sys/block — the same sysfs-first
-// preference S-04's capability probes established, rather than a heavier
-// device-listing tool — then runs smartctl -H against each.
+// smartStatus enumerates real disks from /sys/block, then runs smartctl -H
+// against each. Uses sysfs directly rather than a heavier device-listing tool.
 //
 // Real hardware review on mini found the first version of this function
 // misreporting a plain permission error as a disk failure: it searched the

@@ -8,9 +8,8 @@ import (
 	"phi/internal/pkg"
 )
 
-// PkgList renders `phi pkg list`: one row per category, package names
-// under each — the four-category shape master plan §7.3/§9.12 both ask
-// for (T0, AUR, T4, phi-packages).
+// PkgList renders `phi pkg list`: one row per category (T0, AUR, T4,
+// phi-packages), with package names under each.
 func PkgList(entries []pkg.Entry) string {
 	return pkgReport(entries, false)
 }

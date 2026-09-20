@@ -86,7 +86,7 @@ func TestAskCreatesUsesAndDeletesSession(t *testing.T) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if st.created != 1 || st.deleted != 1 {
-		t.Errorf("created=%d deleted=%d, want 1/1 — the session must not linger (§10.2, V-15)", st.created, st.deleted)
+		t.Errorf("created=%d deleted=%d, want 1/1 — the session must not linger", st.created, st.deleted)
 	}
 	if len(st.sessions) != 0 {
 		t.Errorf("session left behind: %v", st.sessions)

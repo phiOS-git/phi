@@ -1,6 +1,6 @@
-// Package tokens reads phiOS's design tokens (master plan §6.1) and locates
-// the phios-dotfiles checkout they live in. It has no knowledge of templates
-// or destinations — internal/theme owns those.
+// Package tokens reads phiOS's design tokens and locates the phios-dotfiles
+// checkout they live in. It has no knowledge of templates or destinations —
+// internal/theme owns those.
 package tokens
 
 import (
@@ -64,18 +64,11 @@ func Load(root, variant string) (map[string]string, error) {
 		}
 	}
 
-	// PHI_VARIANT_IS_DARK is synthesized here, not read from either token
-	// file: design/tokens.{dark,light}.sh are the hand-authored palette
-	// source (§6.1, "nessun altro file contiene un colore"), and this is
-	// neither a colour nor a font — it exists purely so a template can
-	// express a variant-conditional boolean (S-41: GTK's
-	// gtk-application-prefer-dark-theme=true|false) through the same plain
-	// substitution mechanism every other token uses, without Substitute
-	// growing any conditional logic of its own. internal/theme/set.go's
-	// setPortalPreference derives the identical dark/light boolean in Go,
-	// separately, for the portal write — this is the one other place that
-	// same derivation was needed, now shared instead of copied a third time
-	// if another template ever needs it.
+	// PHI_VARIANT_IS_DARK is synthesized here: not a colour or font, but a
+	// variant-conditional boolean so templates can set dark-mode preferences
+	// (e.g. GTK's gtk-application-prefer-dark-theme) through the same plain
+	// substitution mechanism every other token uses. internal/theme/set.go's
+	// setPortalPreference derives the same boolean in Go for the portal write.
 	out["PHI_VARIANT_IS_DARK"] = fmt.Sprintf("%t", variant == "dark")
 
 	return out, nil

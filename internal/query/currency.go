@@ -17,12 +17,10 @@ import (
 	"phi/internal/state"
 )
 
-// CurrencyProvider converts between currency codes using a cached
-// exchange rate (S-33 AGENT: "a rates source with no API key, cached,
-// falling back to the last known value with no network"). The API
-// (api.frankfurter.dev, ECB-sourced, needs no key) was verified LIVE from
-// this agent's own environment before writing this file — a real GET
-// request, response shape confirmed, not assumed.
+// CurrencyProvider converts between currency codes using a cached exchange
+// rate. The API (api.frankfurter.dev, ECB-sourced, needs no key) was verified
+// live before writing this file — a real GET request with confirmed response
+// shape, not assumed.
 //
 // REAL BUG found on first real-hardware verification (phi-shell's own
 // Launcher, M4): the original design fired the refresh as `go
@@ -31,12 +29,9 @@ import (
 // start), and a goroutine does not survive its process exiting — Query()
 // returns almost immediately (the cache read is local and instant), `phi
 // query`'s own caller prints the results and the process ends, and the Go
-// runtime kills every goroutine at that point, mid-HTTP-request. The rate
-// cache could never actually populate: every single invocation started
-// the same doomed fetch and died before it finished. Fixed by spawning a
-// genuinely detached OS-level CHILD PROCESS instead (spawnCurrencyRefresh
-// below) — `phi query refresh-currency FROM TO`, its own hidden CLI
-// sub-verb (internal/cli/query.go), started via exec.Command with Setsid
+// runtime kills every goroutine at that point, mid-HTTP-request. Fixed by
+// spawning a detached OS-level child process (spawnCurrencyRefresh below)
+// via exec.Command with Setsid
 // so it survives the parent's exit as an orphan, does the fetch
 // synchronously with a real 5s deadline, and writes the cache for the
 // NEXT query to read.

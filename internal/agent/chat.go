@@ -16,7 +16,7 @@ import (
 // responses it already receives. This is engine-independent: if
 // opencode is replaced, the mirror files stay. It is the dashboard's chat
 // source and the corpus for `phi agent search` — no query ever touches
-// opencode's private database (ADR 099 §10.1).
+// opencode's private database is never queried.
 //
 // Conversations not attached to a project are mirrored under a reserved
 // pseudo-project name so the dashboard can still list and search them.

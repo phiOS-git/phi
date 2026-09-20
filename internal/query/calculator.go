@@ -7,12 +7,11 @@ import (
 	"phi/internal/mathx"
 )
 
-// CalculatorProvider answers arithmetic, symbolic math and unit
-// conversions entirely locally (S-33 AGENT: "fully local expression
-// evaluator with unit conversion"). The engine is internal/mathx; this
-// file is the thin launcher adapter — it decides conversion-vs-calculation,
-// bounds the work by the query context, and maps a mathx.Report onto a
-// Result plus its optional RichResult card.
+// CalculatorProvider answers arithmetic, symbolic math and unit conversions
+// entirely locally. The engine is internal/mathx; this file is the thin
+// launcher adapter — it decides conversion-vs-calculation, bounds the work by
+// the query context, and maps a mathx.Report onto a Result plus its optional
+// RichResult card.
 //
 // Two shapes, tried in order:
 //

@@ -16,12 +16,9 @@ import (
 // running for the whole session — `phi` itself is a fresh process on
 // every keystroke (phi/CLAUDE.md's cold-start constraint: "phi query on
 // every keystroke... no heavyweight init"), so it cannot own a schedule to
-// wait on. That is the exact reasoning ADR 021 already gives for
-// reboot/shutdown/volume/brightness/screenshot never becoming phi verbs
-// (SystemActionsProvider, system.go's own header) — this provider follows
-// the same shape: it recognises the query and hands the shell a plain `qs
-// ipc call timer ...` command to run (ActionExec, matching how every
-// shell-owned action already reaches phi-shell from this package), never
+// wait on. Like reboot/shutdown/volume/brightness/screenshot (system actions),
+// timers stay in the shell. This provider recognises the query and hands the
+// shell a plain `qs ipc call timer ...` command to run (ActionExec), never
 // a command phi runs or waits on itself. Services/Timers.qml (phi-shell)
 // owns the actual item list, firing, overlay and ringtone. "add ... to
 // phi" is satisfied literally even so: this file is compiled into the phi

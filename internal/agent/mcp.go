@@ -16,7 +16,7 @@ import (
 // mcpTools, never a change to the architecture.
 //
 // First version: exactly ONE read-only tool with no arguments
-// (`phi_context`), enough to prove the connection (§7.1, P-04). Resist
+// (`phi_context), enough to prove the connection. Resist
 // adding more here — a new capability earns its own step.
 //
 // Transport: newline-delimited JSON-RPC 2.0 over stdio, the MCP stdio
@@ -190,7 +190,7 @@ func phiContext() (string, error) {
 
 	personality := os.Getenv("PHI_AGENT_PERSONALITY")
 
-	// Container layout first. Memory is now three levels (delta D-01): system,
+	// Container layout: Memory is now three levels: system,
 	// the personality in use, and the active project — all always in context.
 	if fileExists("/home/agent/project/progetto.md") || dirExists("/home/agent/project") {
 		project := os.Getenv("PHI_AGENT_PROJECT")

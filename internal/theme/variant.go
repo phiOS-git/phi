@@ -2,10 +2,9 @@ package theme
 
 import "phi/internal/state"
 
-// DefaultVariant is what an unset "theme.variant" state key means (master
-// plan §5.6, bin/lib/tokens.sh's phios_variant). Falling back to it here
-// rather than in internal/state is theme policy, not state policy: state.Get
-// reports "unset" plainly, exactly as it does for any other key.
+// DefaultVariant is what an unset "theme.variant" state key means. Falling
+// back to it here rather than in internal/state is theme policy, not state
+// policy: state.Get reports "unset" plainly for any key.
 const DefaultVariant = "dark"
 
 // CurrentVariant reads the active theme variant that a previous `phi theme

@@ -41,7 +41,7 @@ func (m *Model) projectMetaPath(name string) string {
 	return filepath.Join(m.projectDir(name), "project.json")
 }
 
-// LoadProjectMeta reads project.json. A project created before D-04 has none;
+// LoadProjectMeta reads project.json. A project created before the memory redesign has none;
 // this returns a zero-value meta with the name as title in that case.
 func (m *Model) LoadProjectMeta(name string) (ProjectMeta, error) {
 	if !m.HasProject(name) {
@@ -98,7 +98,7 @@ func (m *Model) SaveProjectMeta(name string, meta ProjectMeta) error {
 }
 
 // renderProgettoMD builds the plain-text instructions file the engine reads,
-// from the structured metadata (§8.5: the engine always reads one file).
+// from the structured metadata (the engine always reads one file).
 func renderProgettoMD(name string, meta ProjectMeta) string {
 	var b strings.Builder
 	title := meta.Title

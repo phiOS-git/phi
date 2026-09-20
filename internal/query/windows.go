@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 )
 
-// WindowsProvider lists open windows via `hyprctl clients -j` — "switch to
-// an open window" is named in S-33's own card as likely the most frequent
-// launcher action on a tiling compositor. Shells out directly rather than
-// reading phi-shell's own live ToplevelManager state; see query.go's
-// package comment for why.
+// WindowsProvider lists open windows via `hyprctl clients -j`. Switching to
+// an open window is likely the most frequent launcher action on a tiling
+// compositor. Shells out directly rather than reading phi-shell's own live
+// ToplevelManager state; see query.go's package comment for why.
 type WindowsProvider struct{}
 
 func (WindowsProvider) Name() string { return "window" }

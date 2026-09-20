@@ -15,7 +15,7 @@ import (
 // A2 session metadata store. `phi agent code`
 // records one JSON file per coding session OUTSIDE the containment; the shell
 // panel reads these files. There is NO inbound network path into A2's
-// namespace (ADR 084 — no shared path/tool/credential between A1 and A2).
+// namespace — A1 and A2 share no paths, tools, or credentials.
 //
 //	~/.local/state/phi-agent/a2/sessions/<id>.json
 

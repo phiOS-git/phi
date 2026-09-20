@@ -44,8 +44,7 @@ type SetResult struct {
 	DryRun   bool
 	Adapters []AdapterResult
 	// PortalPreference is PortalNone under --dry-run: writing the live
-	// preference is exactly the kind of side effect --dry-run promises not
-	// to perform (S-01 AGENT contract, "touch nothing").
+	// preference is exactly the kind of side effect --dry-run must not perform.
 	PortalPreference PortalOutcome
 }
 
@@ -61,7 +60,7 @@ func (r SetResult) Changed() []AdapterResult {
 }
 
 // RestartRequired lists the changed Class C adapters — collected, never
-// restarted (S-12 AGENT contract).
+// restarted. (Callers decide whether to signal applications to reload.)
 func (r SetResult) RestartRequired() []AdapterResult {
 	var out []AdapterResult
 	for _, a := range r.Changed() {
@@ -212,11 +211,10 @@ func writeQtPlatformThemeConfig(home string) error {
 
 // PortalOutcome says what Set did about the live light/dark preference a
 // portal-aware app (GTK4/libadwaita, and Qt apps behind xdg-desktop-portal)
-// reads to switch WITHOUT a restart — distinct from the generated GTK3/GTK4/
-// Qt colour files below, which are Class C (master plan §6.7's own class
-// table: "tema GTK/Qt per app native" is C, restart required). This is the
-// one live-application path S-41's AGENT bullet asks for ("set the
-// colour-scheme preference through the portal so native apps follow").
+// reads to switch without a restart — distinct from the generated GTK3/GTK4/Qt
+// colour files below (Class C, require restart). This is the one
+// live-application path for colour-scheme changes: setting the portal
+// preference so native apps that respect it follow immediately.
 type PortalOutcome string
 
 const (
@@ -226,15 +224,13 @@ const (
 )
 
 // setPortalPreference writes org.gnome.desktop.interface color-scheme via
-// gsettings. xdg-desktop-portal-gtk (already in profiles/desktop/
-// packages.txt since S-20) implements org.freedesktop.impl.portal.Settings
-// by reading exactly this GSettings key and emitting SettingChanged over
-// D-Bus when it changes — the mechanism every portal-aware toolkit's own
-// docs describe for the light/dark preference specifically, not guessed.
-// Needs gsettings-desktop-schemas (S-41 packages.txt addition) for the
-// schema to exist at all; absence degrades to PortalNone; the GTK3/GTK4/Qt
-// colour FILES above are unaffected either way — an app that ignores the
-// portal signal still gets the right colours after its own Class C restart.
+// gsettings. xdg-desktop-portal-gtk implements org.freedesktop.impl.portal.Settings
+// by reading this GSettings key and emitting SettingChanged over D-Bus when
+// it changes. This is the standard mechanism toolkit docs describe for the
+// light/dark preference. Requires gsettings-desktop-schemas for the schema
+// to exist; absence degrades to PortalNone. Colour files generated separately
+// (Class C, require restart) are unaffected either way — an app ignoring the
+// portal signal still gets the right colours after its own restart.
 func setPortalPreference(variant string) PortalOutcome {
 	if _, err := exec.LookPath("gsettings"); err != nil {
 		return PortalNone

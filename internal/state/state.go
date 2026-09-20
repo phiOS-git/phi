@@ -1,9 +1,9 @@
-// Package state is the defined home for phi's runtime state (master plan
-// §5.6): distinct from phios-dotfiles' versioned configuration, and never
-// entering any repository. It lives at $XDG_STATE_HOME/phi as one flat text
-// file per key — the format bin/lib/tokens.sh's phios_variant() already
-// reads for theme-variant, so nothing here may change how that file looks on
-// disk, only who else can read and write it.
+// Package state is the defined home for phi's runtime state: distinct from
+// phios-dotfiles' versioned configuration, and never entering any repository.
+// It lives at $XDG_STATE_HOME/phi as one flat text file per key — the format
+// bin/lib/tokens.sh's phios_variant() already reads for theme-variant, so
+// nothing here may change how that file looks on disk, only who else can
+// read and write it.
 package state
 
 import (
@@ -14,40 +14,29 @@ import (
 	"strings"
 )
 
-// Keys is the closed set §5.6 defines. "Nothing else may be stored there"
-// (S-13 AGENT contract) — Get and Set both reject anything not listed here
-// before touching the filesystem, which is also what keeps a key from ever
-// escaping the state directory.
+// Keys is the closed set of valid state keys. Get and Set both reject
+// anything not listed here before touching the filesystem, which also prevents
+// a key from ever escaping the state directory.
 //
-// Two §5.6 rows are deliberately absent: launcher frecency and clipboard/
-// notification history are collections, not scalars, and each already has
-// an owning step that has not run yet. Modelling
-// them as a single string value here would be a guess this step has no
-// grounds for; they get real keys, or a different storage shape entirely,
-// when their step defines one.
+// Notably absent: launcher frecency and clipboard/notification history.
+// These are collections, not scalars, and need their own storage model when
+// those features are built; storing them as a single string value would be
+// premature speculation.
 var Keys = map[string]bool{
-	"theme.variant":     true, // §5.6 "variante di tema attiva" — written by phi theme set until the settings panel exists
-	"monitor.config":    true, // §5.6 "configurazione monitor"
-	"wallpaper.path":    true, // §5.6 "percorso dello sfondo attivo"
-	"toggle.night-mode": true, // §5.6 "stato dei toggle runtime"
+	"theme.variant":     true, // active theme variant — written by phi theme set until the settings panel exists
+	"monitor.config":    true, // monitor configuration
+	"wallpaper.path":    true, // active wallpaper image path
+	"toggle.night-mode": true, // runtime toggle state
 	"toggle.dnd":        true,
 	"toggle.spotlight":  true,
 	"toggle.chroma":     true,
 
-	// Added at S-40 (settings panel, master plan §9.12): each of these is a
-	// VALUE the Theme/Devices sections need a key for, not a new toggle
-	// category — the runtime-state contract lists "stato dei toggle runtime" and "variante di
-	// tema" as examples, not an exhaustive enumeration, and phi-shell/
-	// CLAUDE.md's own S-20 precedent (checking the roadmap before reading a
-	// boundary strictly) applies the same way here: S-42/S-43/S-46 already
-	// plan exactly this kind of scalar. Batched into this one phi change
-	// rather than three separate version bumps across M4, since every one
-	// needs the same rebuild-in-chroot-then-reinstall cycle from the user
-	// (master plan §3.1) regardless of which step's QML first reads it.
-	"nightmode.temp":   true, // target Kelvin for the manual (non-True-Tone) night-shift profile, consumed at S-42
-	"toggle.true-tone": true, // ambient-light-driven night shift instead of the clock profile, consumed at S-42 — distinct from toggle.night-mode, which is the feature's own on/off
-	"spotlight.size":   true, // "small" | "medium" | "large", consumed at S-43
-	"chroma.color":     true, // hex string for the static-colour override, consumed at S-46
+	// Settings-panel additions: scalars the Theme/Devices sections need keys
+	// for, consistent with the existing toggle and theme-variant pattern.
+	"nightmode.temp":   true, // target Kelvin for the manual (non-True-Tone) night-shift profile
+	"toggle.true-tone": true, // ambient-light-driven night shift instead of the clock profile
+	"spotlight.size":   true, // "small" | "medium" | "large"
+	"chroma.color":     true, // hex string for the static-colour override
 
 	// Added by Out-of-plan: settings-overhaul (batch D — the full wallpaper
 	// section). wallpaper.path already existed as "the active image"; the
@@ -140,7 +129,7 @@ func Get(key string) (value string, ok bool, err error) {
 }
 
 // Set writes key. It has nothing to do with any repository: it writes only
-// under Dir(), which §5.6 places outside every one of them.
+// under Dir(), which is always outside every repository.
 func Set(key, value string) error {
 	if err := checkKey(key); err != nil {
 		return err

@@ -205,7 +205,7 @@ func TestBrokerRequireLoopback(t *testing.T) {
 			t.Errorf("requireLoopback(%q) = %v, want nil", ok, err)
 		}
 	}
-	// 0.0.0.0 (all interfaces) is the case §5.3 / V-17 exists to forbid;
+	// 0.0.0.0 (all interfaces) is not allowed;
 	// a routable hostname and the IPv6 documentation range stand in for
 	// "some real address" without putting a machine literal in the repo.
 	for _, bad := range []string{"0.0.0.0:8789", "example.com:443", "[2001:db8::1]:443"} {

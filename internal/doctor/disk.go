@@ -17,12 +17,10 @@ type usage struct {
 	usedPercent float64
 }
 
-// diskUsageOf statfs(2)s path directly rather than shelling out to df: the
-// same "read /sys and /proc, not a wrapping tool" preference S-04's
-// capability probes already established, applied here to the one syscall
-// this check needs. Bsize's field type differs by GOOS (int64 on Linux,
-// uint32 on darwin) but converts to uint64 either way, which is what keeps
-// this file build-tag-free on both the target platform and this one.
+// diskUsageOf calls statfs(2) directly rather than shelling out to df.
+// Bsize's field type differs by GOOS (int64 on Linux, uint32 on darwin)
+// but converts to uint64 either way, which keeps this file build-tag-free
+// on both the target platform and this one.
 func diskUsageOf(path string) (usage, error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {

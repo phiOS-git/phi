@@ -35,7 +35,7 @@ func AgentProjectList(projects []string, active string, personalities []string) 
 // redirected — this is how the shell panel reads it) it emits exactly one
 // bare proposal name per line and nothing else, so a name containing a space
 // or a colon still reaches the reader intact. A proposal that exists on disk
-// but never surfaces would be the one silent failure §8.6 cannot tolerate.
+// but never surfaces would be a silent failure.
 func AgentMemoryList(project string, proposals []string, styled bool) string {
 	if !styled {
 		var b strings.Builder

@@ -1,14 +1,10 @@
-// Package update implements `phi update` (S-45, master plan §7.3: "Snapshot
-// preventivo, aggiornamento, rigenerazione config, esito"). This is the one
-// verb in phi that deliberately does NOT follow the styled/structured
-// output contract every other verb keeps (phi/CLAUDE.md): pacman -Syu is a
-// real, interactive, privileged system operation — conflict prompts,
-// [Y/n] confirmations, a sudo password — so this package connects the
-// child process directly to the real terminal's stdin/stdout/stderr
-// instead of capturing anything, the one place in this whole codebase that
-// does. It is also why this is a command the USER runs themselves, never
-// something the settings panel's Updates section triggers (that section
-// stays read-only, S-40/S-45's own AGENT contract).
+// Package update implements `phi update`: snapshot, pacman -Syu, regenerate
+// configs, report result. This is the one verb that does not follow phi's
+// styled/structured output contract: pacman -Syu is an interactive, privileged
+// system operation with conflict prompts and sudo password, so this package
+// connects the child process directly to the real terminal, not capturing
+// anything. It's why this is a command the user runs themselves, not triggered
+// by the settings panel.
 package update
 
 import (

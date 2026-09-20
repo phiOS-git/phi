@@ -8,10 +8,8 @@ import (
 	"phi/internal/state"
 )
 
-// StateList renders `phi state list`: every defined §5.6 key, plain aligned
-// columns — the plain-vs-structured decision S-10 deferred to "the first
-// verb that emits data a script would parse" (phi/internal/cli/terminal.go),
-// and this is it. JSON output is left for whichever consumer first needs it.
+// StateList renders `phi state list`: every defined key in plain aligned
+// columns. JSON output is left for whichever consumer first needs it.
 func StateList(entries []state.Entry) string {
 	var b strings.Builder
 	tw := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)

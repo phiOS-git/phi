@@ -7,10 +7,9 @@ import (
 	"strings"
 )
 
-// SSHHostsProvider lists hosts named in ~/.ssh/config's own `Host`
-// directives (S-33 AGENT: "known SSH hosts"). Wildcard patterns
-// ("Host *", "Host *.example.com") are skipped — they are not a real,
-// connectable host by themselves, only a config-matching pattern.
+// SSHHostsProvider lists hosts named in ~/.ssh/config's `Host` directives.
+// Wildcard patterns ("Host *", "Host *.example.com") are skipped — they are
+// not connectable hosts, only config-matching patterns.
 type SSHHostsProvider struct{}
 
 func (SSHHostsProvider) Name() string { return "ssh" }

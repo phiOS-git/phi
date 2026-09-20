@@ -1,5 +1,5 @@
 // Package firewall manages phiOS's inbound firewall through nftables
-// (Out-of-plan: firewall). architettura §6.6 left the backend [TBD] between
+// (scope change: firewall selection between
 // nftables, ufw and firewalld; the user chose nftables directly — it is in
 // the base system (T0), needs no daemon (nftables.service is a one-shot that
 // loads one file), and has no abstraction layer to fight when the settings
@@ -28,7 +28,7 @@
 // 49-phi-firewall, /etc material this repo ships and never applies, exactly
 // like 49-phi-vpn.
 //
-// ADR 067 analog: nothing here emits one of the user's own addresses. The
+// Nothing here emits one of the user's own addresses. The
 // `blocked` view reads the kernel log for the "phi-fw:" prefix and reports
 // the source and destination port of packets the firewall dropped — an
 // unsolicited scanner's own fields, never any phiOS config or peer address.

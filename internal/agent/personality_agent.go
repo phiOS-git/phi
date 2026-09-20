@@ -11,7 +11,7 @@ import (
 //
 // opencode's agent config takes a single `prompt`. To get a personality's
 // memoria.md into context alongside its prompt WITHOUT letting the agent write
-// memoria.md (ADR 094 — memoria.md stays a read-only mount), phi renders a
+// memoria.md (stays read-only inside the mount), phi renders a
 // combined `agent.md` = the user's prompt.md + a managed memory section drawn
 // from memoria.md. The opencode `agent.<name>.prompt` points at agent.md, not
 // prompt.md. phi regenerates agent.md whenever the prompt or the personality

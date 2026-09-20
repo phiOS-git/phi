@@ -6,13 +6,10 @@ import (
 	"syscall"
 )
 
-// srvMount is added to Report only on mini (Run), where /srv lives on a
-// LUKS volume unlocked by hand after every boot (master plan §9.2's note:
-// "dopo ogni riavvio i servizi che dipendono da /srv non partono finché non
-// sblocchi"). Until that happens /srv is an ordinary, empty directory on
-// the root filesystem, not a missing feature — but this still reports
-// Problem, because a timer running doctor unattended wants to know /srv is
-// still not there, whatever the reason, rather than have that go quiet.
+// srvMount is added to Report only on mini, where /srv lives on a LUKS
+// volume unlocked by hand after each boot. Until unlocked, /srv is an
+// ordinary empty directory on the root filesystem. This reports Problem
+// because an unattended timer wants to know /srv is still not mounted.
 func srvMount() Check {
 	const name = "/srv mount"
 
@@ -31,7 +28,7 @@ func srvMount() Check {
 		return Check{Name: name, Status: Unknown, Detail: "cannot determine device ids"}
 	}
 	if rootSys.Dev == srvSys.Dev {
-		return Check{Name: name, Status: Problem, Detail: "/srv is not a separate mount — the encrypted volume is likely still locked (unlock by hand after every reboot, master plan §9.2)"}
+		return Check{Name: name, Status: Problem, Detail: "/srv is not a separate mount — the encrypted volume is likely still locked"}
 	}
 
 	u, err := diskUsageOf("/srv")
