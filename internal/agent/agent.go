@@ -1,18 +1,5 @@
-// Package agent implements the milestone-0 pieces of the phiOS AI agent
-// subsystem that belong to phi:
-//
-//	phi agent broker    the provider-credential broker
-//	phi agent mcp       the phi MCP server, tool 5
-//	phi agent project   active-project switch, rebuilds the perimeter
-//	phi agent ask       inline one-shot onto the running A1 service
-//
-// Everything here is domain logic with a thin view layer, per phi/CLAUDE.md:
-// the broker and MCP server are plain net/http and stdio, no dependency.
-//
-// The engine (opencode) and the containment (phi-agent-contain, in
-// phios-dotfiles) are NOT in this package. phi only ever talks to opencode
-// over its documented loopback HTTP API and never assumes its on-disk
-// format.
+// Package agent: broker, MCP server, project/ask subcommands. Domain logic
+// with thin view layer. Engine (opencode) and containment elsewhere.
 package agent
 
 import (
