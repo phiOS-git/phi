@@ -7,17 +7,8 @@ import (
 	"strings"
 )
 
-// ApplicationsProvider lists installed applications by scanning .desktop
-// files (freedesktop Desktop Entry spec) — the same source Quickshell's
-// own DesktopEntries type reads on the shell side, duplicated here rather
-// than reached through a running shell (query.go's own note explains why:
-// phi stays self-contained and testable without one).
-//
-// Cold start (query.go's own constraint): re-scanning every .desktop file
-// on every keystroke is the simplest correct thing, and for the low
-// hundreds of entries a real system has is plausibly fast enough — this is
-// genuinely unverified without real hardware, flagged here rather than
-// guessed at with an unbuilt cache this step has no way to validate either.
+// ApplicationsProvider lists apps by scanning .desktop files (desktop
+// entry spec). Re-scans every keystroke (simple, likely fast for hundreds).
 type ApplicationsProvider struct{}
 
 func (ApplicationsProvider) Name() string { return "application" }
@@ -26,17 +17,7 @@ func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
 	if q == "" {
 		return nil
 	}
-	// runner-bar prefix feature: "app <name>" must match
-	// <name> against each entry's title, not the literal text "app <name>"
-	// — the unprefixed path below is untouched (every entry returned with
-	// Score left at its zero default, Rank's own matchWeight against the
-	// raw q does the filtering, exactly as before this feature). Once
-	// prefixed, this provider has to score entries itself instead: Rank's
-	// fallback would score against the UNSTRIPPED q, and matchWeight's
-	// subsequence check requires every rune of the needle to appear in
-	// order in the title — "app firefox" is not a subsequence of
-	// "Firefox" (no 'a' in it at all), so every entry would silently
-	// vanish rather than just rank as an imperfect match.
+	// Prefix "app <name>": strip "app " and score term only, not full q.
 	prefixed := false
 	term := q
 	if len(q) >= 4 && strings.EqualFold(q[:4], "app ") {

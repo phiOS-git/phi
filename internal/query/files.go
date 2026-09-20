@@ -7,31 +7,11 @@ import (
 	"strings"
 )
 
-// FilesProvider is the file-search provider, backed by `fd` (already in
-// profiles/base/packages.txt). This is a live search, never a persisted index.
-// Result count is capped in Go after fd runs, not via an fd flag — no guess
-// about fd's exact interface is needed to truncate the returned output.
+// FilesProvider: file search backed by `fd` (live search, capped in Go).
 const filesMaxResults = 8
 
-// imageExtensions are the file types opened through phi-shell's own native
-// floating image window (Images/ImageWindow.qml, interface rework) instead
-// of through xdg-open. xdg-open depends on a mimeapps.list default
-// association that this repository does not ship or manage — nothing here
-// configures one — so its actual behaviour is whatever the live machine
-// happens to resolve, which is what let it silently misbehave (docs/
-// Requested: a terminal window flashing open and closing). Naming the real
-// target explicitly removes that guesswork for the one file type this
-// launcher is asked to treat specially.
-//
-// Previously opened via a bare `imv -i phios-imv`, explicitly classed so
-// hyprland.lua.tmpl's own window rule could float it — replaced once
-// phi-shell grew a real native image surface (requested: "images should be
-// opened in floating mode, in a window with a 4px border and a bottom area
-// containing the name of the file... A reference can be seen in the file
-// 'references/floating-panels-reference.JPG'"), which also fixes a real
-// reported bug the external-imv approach had (the window losing focus and
-// closing) by construction — a phi-shell-owned surface has no second
-// process and no window-rule-matching race to lose that focus to.
+// imageExtensions: files opened in phi-shell's native floating window
+// (not via xdg-open, which has mimeapps.list uncertainties).
 var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
 	".bmp": true, ".webp": true, ".tiff": true, ".tif": true,
