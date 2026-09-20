@@ -17,63 +17,46 @@ import (
 	"time"
 )
 
-// The broker is the level-3 credential measure: the provider key is NEVER
-// in the agent process. opencode (inside the containment) is configured to
-// speak to this broker on loopback in clear. The broker — outside the
-// containment — holds the key, adds it to outbound requests, streams
-// responses back, meters consumption, and applies local rate limits. If it
-// is down, agents fail closed: opencode gets connection-refused.
-//
-// It is deliberately provider-agnostic: upstream, auth headers, and extra
-// headers all come from broker.json; the key comes from a file outside every
-// repository.
+// The broker is a credential measure: the provider key is NEVER in the
+// agent process. The broker (outside containment) holds the key, adds it to
+// outbound requests, streams responses, meters consumption, and applies
+// local rate limits. Deliberately provider-agnostic: config from
+// broker.json, key from an external file.
 
-// BrokerConfig is <ConfigDir>/broker.json. Ship broker.example.json, copy,
-// edit. Nothing secret belongs in it — the key is a separate file.
+// BrokerConfig is <ConfigDir>/broker.json; keep secrets outside it.
 type BrokerConfig struct {
-	// Listen is the loopback address to serve on, e.g. "127.0.0.1:8789".
-	// A non-loopback host is rejected: the broker must never be reachable
-	// off the machine.
+	// Listen: loopback address only (never reachable off-machine).
 	Listen string `json:"listen"`
 
-	// Upstream is the provider's API base, e.g. "https://api.anthropic.com".
-	// The incoming request path is appended unchanged.
+	// Upstream: provider's API base; request path is appended unchanged.
 	Upstream string `json:"upstream"`
 
-	// AuthHeader / AuthValue is how the key is attached. AuthValue may
-	// contain the literal token "{key}", replaced with the key file
-	// contents. Examples:
-	//   Anthropic:          "x-api-key" / "{key}"
-	//   OpenAI-compatible:  "authorization" / "Bearer {key}"
+	// AuthHeader / AuthValue: how the key is attached (AuthValue replaces
+	// "{key}" with file contents).
 	AuthHeader string `json:"auth_header"`
 	AuthValue  string `json:"auth_value"`
 
-	// ExtraHeaders are added to every upstream request (e.g. Anthropic's
-	// "anthropic-version"). They never contain secrets.
+	// ExtraHeaders: added to every upstream request (never contain secrets).
 	ExtraHeaders map[string]string `json:"extra_headers"`
 
-	// StripRequestHeaders are removed from the incoming request before
-	// forwarding — the client's own auth attempts, first of all. AuthHeader
-	// is always stripped regardless of this list.
+	// StripRequestHeaders: removed before forwarding (AuthHeader always
+	// stripped).
 	StripRequestHeaders []string `json:"strip_request_headers"`
 
-	// RateLimit is the local cap. Zero requests disables it (not
-	// recommended — a local limit is wanted as well as the provider cap).
+	// RateLimit: local cap (0 disables; recommend setting both local and provider).
 	RateLimit struct {
 		Requests      int `json:"requests"`
 		WindowSeconds int `json:"window_seconds"`
 	} `json:"rate_limit"`
 
-	// MeterFile is where per-request consumption records are appended as
-	// JSONL. Defaults to <StateDir>/broker-meter.jsonl.
+	// MeterFile: where consumption records are appended as JSONL.
 	MeterFile string `json:"meter_file"`
 
-	// UpstreamTimeoutSeconds bounds a whole non-streaming request. 0 keeps
-	// the Go default of no timeout, which streaming needs.
+	// UpstreamTimeoutSeconds: bounds non-streaming requests (0 = no timeout).
 	UpstreamTimeoutSeconds int `json:"upstream_timeout_seconds"`
 }
 
-// Broker is a configured, ready-to-run broker.
+// Broker is configured and ready to run.
 type Broker struct {
 	inst   Instance
 	cfg    BrokerConfig
@@ -83,9 +66,7 @@ type Broker struct {
 	meter  *meter
 }
 
-// LoadBroker reads broker.json and the key file for the instance and
-// validates everything the broker needs to start. It does NOT bind the
-// socket — see Check and Run.
+// LoadBroker reads and validates broker.json and the key file.
 func LoadBroker(inst Instance) (*Broker, error) {
 	dir, err := inst.ConfigDir()
 	if err != nil {
@@ -99,10 +80,8 @@ func LoadBroker(inst Instance) (*Broker, error) {
 		}
 		return nil, err
 	}
-	// Not DisallowUnknownFields: the example file documents itself with
-	// "//"-prefixed keys, a common JSON-config convention. The fields that
-	// matter are all explicitly required below, so a typo in one of them is
-	// caught anyway.
+	// Not DisallowUnknownFields: JSON example documents itself with "//"-prefixed
+	// keys; required fields are validated explicitly below anyway.
 	var cfg BrokerConfig
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("%s: %w", cfgPath, err)
@@ -163,10 +142,8 @@ func LoadBroker(inst Instance) (*Broker, error) {
 	return b, nil
 }
 
-// loadProviderKey resolves the key file in precedence order: the explicit
-// env var (set by the systemd unit from LoadCredential), then the systemd
-// credentials directory, then the in-config-dir fallback for a hand-run
-// broker. The key is never a literal anywhere and never in a repository.
+// loadProviderKey resolves the key file from env var, systemd credentials,
+// or config directory (in that order).
 func loadProviderKey(cfgDir string) (key, src string, err error) {
 	candidates := []string{
 		os.Getenv("PHI_AGENT_BROKER_KEY_FILE"),
@@ -191,11 +168,7 @@ func loadProviderKey(cfgDir string) (key, src string, err error) {
 	return "", "", errors.New("no provider key file found (set PHI_AGENT_BROKER_KEY_FILE, or create <config>/phi-agent/<instance>/provider-key with mode 600)")
 }
 
-// requireLocalListen accepts a loopback host:port, or a "unix:<path>"
-// address. A2's broker listens on a unix socket bind-mounted into the
-// containment — the container has --unshare-net and no TCP path to
-// the host loopback. Anything routable is rejected: the broker is never
-// reachable off the machine.
+// requireLocalListen accepts loopback or unix socket addresses only.
 func requireLocalListen(addr string) error {
 	if network, path, ok := splitUnix(addr); ok {
 		if network != "unix" || path == "" {
@@ -242,8 +215,7 @@ func (b *Broker) listen() (net.Listener, error) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, err
 		}
-		// A leftover socket from an unclean stop would make bind fail with
-		// EADDRINUSE.
+		// Remove stale socket from unclean stop.
 		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
 			_ = os.Remove(path)
 		}
@@ -266,11 +238,10 @@ func expandHome(p string) string {
 	return p
 }
 
-// Check validates configuration and key availability without serving. It is
-// the broker unit's ExecStartPre and the user's "is this wired right" test.
-func (b *Broker) Check() error { return nil } // LoadBroker already did the work
+// Check is the broker unit's ExecStartPre (validation done by LoadBroker).
+func (b *Broker) Check() error { return nil }
 
-// Summary is a one-line human description for `phi agent broker --check`.
+// Summary returns a one-line description of broker configuration.
 func (b *Broker) Summary() string {
 	rl := "off"
 	if b.lim != nil {
@@ -280,9 +251,7 @@ func (b *Broker) Summary() string {
 		b.inst, b.cfg.Listen, b.cfg.Upstream, b.cfg.AuthHeader, rl, len(b.key))
 }
 
-// handler builds the reverse proxy. FlushInterval < 0 makes ReverseProxy
-// flush to the client immediately after every read from upstream — the
-// documented way to pass SSE / chunked streams through without buffering.
+// handler builds a reverse proxy that flushes immediately (for SSE/chunking).
 func (b *Broker) handler() http.Handler {
 	rp := &httputil.ReverseProxy{
 		FlushInterval: -1,
@@ -293,8 +262,7 @@ func (b *Broker) handler() http.Handler {
 			if b.target.Path != "" && b.target.Path != "/" {
 				pr.Out.URL.Path = strings.TrimRight(b.target.Path, "/") + pr.Out.URL.Path
 			}
-			// Drop the client's own auth attempts and anything the config
-			// names, then attach the real credential.
+			// Strip client auth and config-named headers, then add real credential.
 			pr.Out.Header.Del(b.cfg.AuthHeader)
 			pr.Out.Header.Del("Authorization")
 			pr.Out.Header.Del("X-Api-Key")
@@ -305,8 +273,7 @@ func (b *Broker) handler() http.Handler {
 			for k, v := range b.cfg.ExtraHeaders {
 				pr.Out.Header.Set(k, v)
 			}
-			// X-Forwarded-* would leak the loopback client detail upstream
-			// for no benefit.
+			// Don't leak loopback client detail to upstream.
 			pr.Out.Header.Del("X-Forwarded-For")
 			pr.Out.Header.Del("X-Forwarded-Host")
 			pr.Out.Header.Del("X-Forwarded-Proto")
@@ -336,7 +303,7 @@ func (b *Broker) handler() http.Handler {
 			return
 		}
 
-		// Sniff the model from the request body without consuming it.
+		// Extract model from body without consuming it.
 		model, body := sniffModel(r.Body)
 		r.Body = body
 
@@ -356,14 +323,12 @@ func (b *Broker) handler() http.Handler {
 	})
 }
 
-// Run serves until ctx is cancelled. It binds the socket here (not in
-// LoadBroker) so a bind failure is a run failure the unit can restart.
+// Run serves until ctx is cancelled (binds socket here for restartability).
 func (b *Broker) Run(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:    b.cfg.Listen,
 		Handler: b.handler(),
-		// No ReadTimeout/WriteTimeout: a long streaming completion is a
-		// normal request here, and a write deadline would truncate it.
+		// No write deadline: long streaming completions are normal.
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -389,22 +354,20 @@ func (b *Broker) Run(ctx context.Context) error {
 	}
 }
 
-// sniffModel reads the request body fully (opencode's messages are small
-// JSON), extracts a top-level "model" string if present, and returns a
-// fresh ReadCloser with the same bytes. On any error it returns "" and the
-// original body unread.
+// sniffModel reads the request body, extracts the "model" field, and
+// returns a fresh ReadCloser with the same bytes.
 func sniffModel(rc io.ReadCloser) (string, io.ReadCloser) {
 	if rc == nil {
 		return "", http.NoBody
 	}
-	const maxBody = 1 << 20 // 1 MiB is far more than a chat turn's request
+	const maxBody = 1 << 20 // 1 MiB is more than enough
 	buf, err := io.ReadAll(io.LimitReader(rc, maxBody+1))
 	if err != nil {
-		// Hand back what we have followed by the rest, unsniffed.
+		// Pass through what we read + the rest.
 		return "", io.NopCloser(io.MultiReader(bytes.NewReader(buf), rc))
 	}
 	if len(buf) > maxBody {
-		// Unexpectedly large: do not risk corrupting it, just pass through.
+		// Large request: pass through without sniffing.
 		return "", struct {
 			io.Reader
 			io.Closer
@@ -438,9 +401,7 @@ func (c *countingResponseWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// Flush forwards the flush ReverseProxy issues after each streamed chunk —
-// without this method the stream would buffer inside net/http and V-09
-// would fail.
+// Flush forwards flush events from ReverseProxy after each chunk.
 func (c *countingResponseWriter) Flush() {
 	if f, ok := c.ResponseWriter.(http.Flusher); ok {
 		f.Flush()

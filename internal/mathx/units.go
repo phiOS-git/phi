@@ -7,25 +7,13 @@ import (
 	"strings"
 )
 
-// Unit conversion for the launcher's converter (phi query). The old
-// hand-rolled table in internal/query/calculator.go covered seven lengths,
-// four masses and three temperatures and demanded exactly
-// "<number> <unit> to <unit>" — four whitespace-separated tokens, so
-// "100km to m" did not parse. This package replaces it with a real, if
-// still finite, registry: every SI base and the common derived quantities,
-// each metric unit auto-expanded across the full SI prefix range, a broad
-// alias list (symbols, spelled-out names, plurals, "sq m" / "m2" / "m^2"),
-// and a tolerant "<number><unit> (to|in|as|into|->) <unit>" grammar that
-// also accepts a glued number, an implicit value of 1, and a bare
-// "<unit> to <unit>".
-//
-// It is deliberately NOT a general dimensional-analysis engine: no
-// arbitrary compound units ("kg*m/s^2" as text), no offset+scale mixing
-// beyond temperature. Those belong to a dedicated library; this is the
-// everyday set a launcher is asked for.
+// Unit provides unit conversion for the launcher (phi query). Replaces the
+// old hand-rolled table with a full SI registry, auto-expanded prefixes,
+// comprehensive aliases (symbols, names, plurals, notations), and tolerant
+// grammar. Deliberately NOT a dimensional-analysis engine: no arbitrary
+// compounds, limited temperature offset+scale.
 
-// Dimension is the physical quantity a unit measures. Conversion is only
-// defined between units of the same Dimension.
+// Dimension is a physical quantity; conversion is only between same Dimension.
 type Dimension string
 
 const (
@@ -53,10 +41,8 @@ const (
 	DimFuel        Dimension = "fuel economy"
 )
 
-// unitDef converts to and from the dimension's base unit with the linear
-// map base = value*factor + offset. offset is zero for every dimension
-// except temperature, which is the one everyday scale that does not pass
-// through a common zero.
+// unitDef converts between a unit and its dimension's base using
+// base = value*factor + offset. Offset is nonzero only for temperature.
 type unitDef struct {
 	dim    Dimension
 	factor float64
@@ -64,14 +50,10 @@ type unitDef struct {
 	canon  string // the name printed back to the user
 }
 
-// registry is the fully expanded lookup table: every alias, and every
-// SI-prefixed form of every prefixable unit, mapped to its unitDef. Built
-// once, lazily, on first use — a launcher process is short-lived but a
-// single query can touch it several times.
+// registry is the fully expanded lookup table, built once lazily on first use.
 var registry map[string]unitDef
 
-// siPrefixes is the full modern set (BIPM, 2022 revision included). value
-// is the power of ten the prefix multiplies by.
+// siPrefixes: BIPM 2022 set, value is the power of ten.
 var siPrefixes = []struct {
 	sym, name string
 	value     float64
@@ -87,7 +69,7 @@ var siPrefixes = []struct {
 	{"r", "ronto", 1e-27}, {"q", "quecto", 1e-30},
 }
 
-// binPrefixes are the IEC binary prefixes, applied only to the data units.
+// binPrefixes: IEC binary prefixes for data units only.
 var binPrefixes = []struct {
 	sym, name string
 	value     float64
@@ -96,9 +78,8 @@ var binPrefixes = []struct {
 	{"Ti", "tebi", 1 << 40}, {"Pi", "pebi", 1 << 50}, {"Ei", "exbi", 1 << 60},
 }
 
-// prefixable is one metric unit that accepts the full SI prefix range. The
-// aliases here are the UNPREFIXED forms; a prefixed alias is generated for
-// every entry (km, kilometre, kilometer, ...).
+// prefixable: metric unit that accepts full SI prefix range. Aliases here
+// are UNPREFIXED; prefixed forms (km, kilometre, kilometer) are generated.
 type prefixable struct {
 	dim     Dimension
 	factor  float64 // unprefixed unit -> base
@@ -128,8 +109,7 @@ var prefixables = []prefixable{
 	{dim: DimEnergy, factor: 1, canon: "Wh", symbols: []string{"Wh"}, names: []string{"watt-hour", "watthour"}}, // Wh, kWh, MWh via prefixes on the whole token
 }
 
-// fixedUnit is a non-metric unit (or a metric one that takes no prefix)
-// listed explicitly with its factor to the dimension's base.
+// fixedUnit: non-metric or non-prefixable unit with explicit base factor.
 type fixedUnit struct {
 	dim     Dimension
 	factor  float64
@@ -287,9 +267,8 @@ var fixedUnits = []fixedUnit{
 	{DimAngle, math.Pi / 10800, "arcmin", []string{"arcmin", "arcminute", "arcminutes"}},
 	{DimAngle, 2 * math.Pi, "turn", []string{"turn", "turns", "revolution", "revolutions", "rev"}},
 
-	// data — bytes/bits handled as prefixables; keep explicit common ones
-	// too, including the lowercase "mb"/"gb" spellings a launcher user
-	// almost always means as bytes (not millibits).
+	// data: bytes/bits are prefixables; explicit entries for common forms
+	// (kb/mb/gb usually mean bytes, not bits).
 	{DimData, 8, "B", []string{"byte", "bytes", "octet", "octets"}},
 	{DimData, 8 * 1024, "KiB", []string{"kib", "kibibyte"}},
 	{DimData, 8 * 1024 * 1024, "MiB", []string{"mib", "mebibyte"}},
@@ -313,15 +292,14 @@ var fixedUnits = []fixedUnit{
 	{DimDataRate, 8, "B/s", []string{"byte/s", "bytespersecond"}},
 	{DimDataRate, 8e6, "MB/s", []string{"mbyte/s", "megabytespersecond"}},
 
-	// fuel economy — base is metres per cubic metre (m/m³ = 1/(m²)); use
-	// km per litre as base for readability. factor -> km/L.
+	// fuel economy: base = km/L (factor converts to km/L).
 	{DimFuel, 1, "km/L", []string{"kmpl", "km/l", "kilometersperliter"}},
 	{DimFuel, 0.425143707, "mpg", []string{"mpg", "milespergallon", "usmpg"}},
 	{DimFuel, 0.354006042, "mpgUK", []string{"mpguk", "milespergallonuk", "impmpg"}},
 }
 
-// invFuel marks the dimensions where a smaller number means "more" — L/100km
-// is the odd one out and is handled as a special case in Convert.
+// lPer100kmAliases: L/100km is handled as a special case in Convert
+// (smaller = better).
 var lPer100kmAliases = map[string]bool{
 	"l/100km": true, "lper100km": true, "litersper100km": true, "litresper100km": true,
 }
@@ -339,7 +317,7 @@ func buildRegistry() {
 		}
 	}
 
-	// Fixed units first so their canonical names are authoritative.
+	// Fixed units first to make their canonical names authoritative.
 	for _, u := range fixedUnits {
 		def := unitDef{dim: u.dim, factor: u.factor, offset: 0, canon: u.canon}
 		put(u.canon, def)
@@ -348,7 +326,7 @@ func buildRegistry() {
 		}
 	}
 
-	// Temperature: the two offset scales, added after the plain kelvin entry.
+	// Temperature offset scales: °C, °F, °R.
 	registry[normalizeUnit("°C")] = unitDef{dim: DimTemperature, factor: 1, offset: 273.15, canon: "°C"}
 	for _, a := range []string{"c", "°c", "celsius", "centigrade", "degc", "degreec", "degreescelsius"} {
 		registry[normalizeUnit(a)] = registry[normalizeUnit("°C")]
@@ -362,7 +340,7 @@ func buildRegistry() {
 		registry[normalizeUnit(a)] = registry[normalizeUnit("°R")]
 	}
 
-	// Prefixable metric units, across the whole SI (and IEC binary) range.
+	// Prefixable metric units with SI and IEC binary prefixes.
 	for _, pu := range prefixables {
 		base := unitDef{dim: pu.dim, factor: pu.factor, offset: 0, canon: pu.canon}
 		put(pu.canon, base)
@@ -397,27 +375,22 @@ func buildRegistry() {
 		}
 	}
 
-	// L/100km — inverse fuel economy, registered so LookupUnit finds it;
-	// Convert special-cases the reciprocal.
+	// L/100km: inverse fuel economy, special-cased in Convert.
 	for a := range lPer100kmAliases {
 		registry[normalizeUnit(a)] = unitDef{dim: DimFuel, factor: -1, offset: 0, canon: "L/100km"}
 	}
 }
 
-// normalizeUnit lowercases (except the micro sign and a few case-significant
-// symbols are already folded by the alias lists), strips spaces and a
-// trailing plural "s" is NOT stripped here — the alias lists carry plurals
-// explicitly so "ms" (millisecond) is never mistaken for a plural of "m".
+// normalizeUnit lowercases and strips spaces; trailing "s" is never
+// stripped (aliases carry plurals explicitly to avoid "ms" ambiguity).
 func normalizeUnit(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, " ", "")
-	// Common typographic variants folded to ASCII where unambiguous.
+	// Fold typographic variants to ASCII.
 	s = strings.ReplaceAll(s, "μ", "µ")
 	lower := strings.ToLower(s)
-	// Keep the exact form for the case-significant data symbols (B bytes
-	// vs b bits) and kelvin (K) vs the kilo prefix. Everything else folds
-	// to lower case — a launcher user writing "C", "N", "W" means the
-	// everyday unit, not a rarely-wanted homograph.
+	// Preserve case for data symbols (B vs b) and K (vs kilo prefix).
+	// Everything else lowercases.
 	switch s {
 	case "B", "KiB", "MiB", "GiB", "TiB", "PiB", "kB", "MB", "GB", "TB", "PB", "K":
 		return s
@@ -431,15 +404,13 @@ func ensureRegistry() {
 	}
 }
 
-// LookupUnit resolves a unit name (any registered alias, any SI-prefixed
-// form) to its definition.
+// LookupUnit resolves a unit name to its definition.
 func lookupUnit(name string) (unitDef, bool) {
 	ensureRegistry()
 	if d, ok := registry[normalizeUnit(name)]; ok {
 		return d, true
 	}
-	// Retry with a stripped trailing plural, but only for names long
-	// enough that this cannot eat a real one-letter symbol.
+	// Retry with plural stripped (only for long names to avoid eating symbols).
 	n := normalizeUnit(name)
 	if len(n) > 3 && strings.HasSuffix(n, "s") {
 		if d, ok := registry[n[:len(n)-1]]; ok {
@@ -449,15 +420,14 @@ func lookupUnit(name string) (unitDef, bool) {
 	return unitDef{}, false
 }
 
-// UnitKnown reports whether name resolves to any registered unit.
+// UnitKnown reports whether a unit name is registered.
 func UnitKnown(name string) bool {
 	_, ok := lookupUnit(name)
 	return ok
 }
 
-// Convert converts value from one unit to another. It returns the numeric
-// result, the shared Dimension, and the canonical spellings of the two
-// units (for echoing back a clean "X to Y").
+// Convert converts a value between units, returning the result, shared
+// Dimension, and canonical spellings.
 func Convert(value float64, from, to string) (result float64, dim Dimension, fromCanon, toCanon string, err error) {
 	f, ok := lookupUnit(from)
 	if !ok {
@@ -471,8 +441,7 @@ func Convert(value float64, from, to string) (result float64, dim Dimension, fro
 		return 0, "", "", "", fmt.Errorf("cannot convert %s (%s) to %s (%s)", from, f.dim, to, t.dim)
 	}
 
-	// Fuel economy: L/100km is reciprocal to km/L, so a plain linear map
-	// does not work when exactly one side is L/100km.
+	// Fuel economy: L/100km is reciprocal to km/L, needs special handling.
 	if f.dim == DimFuel {
 		fromKmL := value * f.factor
 		if f.factor < 0 { // value is L/100km
@@ -495,9 +464,8 @@ func Convert(value float64, from, to string) (result float64, dim Dimension, fro
 	return out, f.dim, f.canon, t.canon, nil
 }
 
-// CommonTargets returns a small set of other units in the same dimension
-// worth showing alongside a conversion (the rich result's table). It is a
-// curated, per-dimension list, not "every unit we know".
+// CommonTargets returns curated units in the same dimension for conversion
+// results.
 func CommonTargets(dim Dimension, exclude ...string) []string {
 	skip := map[string]bool{}
 	for _, e := range exclude {
@@ -545,8 +513,7 @@ func CommonTargets(dim Dimension, exclude ...string) []string {
 	return out
 }
 
-// AllUnitNames is a sorted, de-duplicated list of every canonical unit
-// name, for `phi query`'s own --help / a future `phi convert --list`.
+// AllUnitNames returns a sorted, de-duplicated list of all canonical unit names.
 func AllUnitNames() []string {
 	ensureRegistry()
 	seen := map[string]bool{}
