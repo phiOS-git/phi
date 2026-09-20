@@ -11,22 +11,9 @@ import (
 	"strings"
 )
 
-// phi MCP server — the ONLY growth
-// point for A1's capabilities. Every future capability is a new entry in
-// mcpTools, never a change to the architecture.
-//
-// First version: exactly ONE read-only tool with no arguments
-// (`phi_context), enough to prove the connection. Resist
-// adding more here — a new capability earns its own step.
-//
-// Transport: newline-delimited JSON-RPC 2.0 over stdio, the MCP stdio
-// transport. opencode registers it as:
-//
-//	"mcp": { "phi": { "type": "local", "command": ["phi", "agent", "mcp"] } }
-//
-// It runs INSIDE the containment: it may not assume network, a session
-// bus, or any path outside the mounts. It reads only the project and
-// personality files already mounted for the agent.
+// MCP server (only growth point for A1 capabilities; new caps = new entries
+// in mcpTools). JSON-RPC 2.0 over stdio. Runs inside containment (read-only
+// on project/personality files).
 
 const mcpProtocolVersion = "2025-06-18"
 

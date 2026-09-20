@@ -1,20 +1,6 @@
-// Package wallpaper generates the procedural texture overlays the shell's
-// background layer composites over a solid colour (settings-overhaul batch
-// D). The user's directive: a texture is picked from a small catalogue
-// (grain, noise, paper, leather, rock, fabric …) with an intensity, and it
-// is "generated once, not at runtime" — so this writes a finished RGBA PNG
-// the shell just tiles at opacity 1, the strength already baked into the
-// alpha channel.
-//
-// Output shape: mostly-transparent RGBA. A pixel is white where the noise
-// is positive, black where it is negative, and its alpha is |noise| scaled
-// by the intensity — exactly how a film-grain overlay works, so the shell
-// needs no blend mode (which would mean a shader / GraphicalEffects, the
-// surface Quickshell 0.3.x stability notes tell us to avoid).
-//
-// Determinism: the RNG is seeded from (mode, intensity, width, height) so
-// the shell's cache key ($XDG_DATA_HOME/phi/textures/<mode>-<intensity>.png)
-// is honest — the same inputs always produce the same file.
+// Package wallpaper generates procedural texture overlays for shell
+// background. One catalog entry per intensity setting, cached as RGBA PNG,
+// deterministic (seeded from mode, intensity, size).
 package wallpaper
 
 import (

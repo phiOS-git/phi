@@ -7,13 +7,8 @@ import (
 	"unicode/utf8"
 )
 
-// engine.go is the single entry point the launcher's calculator provider
-// calls: Evaluate(text) -> *Report. It recognises both symbolic notation
-// (derivative(...), integral(...), solve(...), plot(...)) and the natural
-// phrasings a person types into a launcher ("derivative of x^2",
-// "integrate sin x from 0 to pi", "5 choose 2", "20% of 150"), routes to
-// the right pass, and returns a structured Report the CLI renders as text
-// and the shell renders as a rich card.
+// engine.go is the calculator entry point: parses symbolic and natural
+// phrasings, routes to the right pass, returns structured Report.
 
 // Row is one labelled value in a Report's Table (a converter's alternate
 // units, a solver's multiple roots shown side by side).

@@ -1,8 +1,5 @@
-// Package doctor composes the machine-shape checks `phi doctor` reports.
-// It answers: is this machine in the shape the repo expects? Each check
-// degrades to Unknown rather than guessing when the tool or privilege it
-// needs is not available. An unreachable check is reported as unreachable,
-// never silently dropped and never promoted to false ok.
+// Package doctor composes machine-shape checks. Each check degrades to
+// Unknown rather than guessing when unavailable.
 package doctor
 
 import (

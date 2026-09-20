@@ -7,21 +7,10 @@ import (
 	"strings"
 )
 
-// Equation and inequality solving for a single unknown.
-//
-//   - Polynomials up to degree 2 are solved exactly (linear isolation and
-//     the quadratic formula), with worked steps and complex roots where
-//     they occur.
-//   - Higher-degree polynomials and any transcendental equation are
-//     solved numerically: a broad scan brackets every sign change, then
-//     bisection + a Newton polish locates each root; duplicates are
-//     merged.
-//   - Inequalities are reduced to f(x) <relation> 0, the real roots of f
-//     become the breakpoints, and the sign of f is sampled on each open
-//     interval to assemble the solution set in interval notation.
-//
-// It does not do systems of equations, symbolic transcendental inversion,
-// or parametric solutions.
+// Equation and inequality solving: polynomials up to degree 2 solved
+// exactly (quadratic formula); higher-degree and transcendental solved
+// numerically (bisection + Newton polish). Inequalities use sign analysis
+// on intervals defined by roots.
 
 // SolveResult is the outcome of solving one relation.
 type SolveResult struct {

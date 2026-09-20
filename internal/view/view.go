@@ -1,7 +1,5 @@
-// Package view renders phi's output as plain strings. It has no knowledge
-// of terminals, files, or exit codes — internal/cli decides when a terminal
-// is attached and which string to print. Keeping that decision out of this
-// package is what lets it survive a rewrite of the CLI layer unchanged.
+// Package view renders phi's output as plain strings (terminal/file/exit
+// decisions deferred to internal/cli).
 package view
 
 import (

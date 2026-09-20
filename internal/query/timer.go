@@ -8,25 +8,8 @@ import (
 	"strings"
 )
 
-// TimerProvider answers "timer <duration> [label]" and "alarm <HH:MM>
-// [label]" runner queries (Requested: "add a timer and alarm feature to
-// phi, also add tools to the runner to quicky setup timers and alarms").
-//
-// Timers and alarms can only actually fire from something that keeps
-// running for the whole session — `phi` itself is a fresh process on
-// every keystroke (phi/CLAUDE.md's cold-start constraint: "phi query on
-// every keystroke... no heavyweight init"), so it cannot own a schedule to
-// wait on. Like reboot/shutdown/volume/brightness/screenshot (system actions),
-// timers stay in the shell. This provider recognises the query and hands the
-// shell a plain `qs ipc call timer ...` command to run (ActionExec), never
-// a command phi runs or waits on itself. Services/Timers.qml (phi-shell)
-// owns the actual item list, firing, overlay and ringtone. "add ... to
-// phi" is satisfied literally even so: this file is compiled into the phi
-// binary, same as every other provider here — there is deliberately no
-// new `internal/cli` "timer"/"alarm" verb alongside it, since one would
-// have nothing to do that this provider and the shell don't already do
-// between them. Flagged for cheap veto if a standalone terminal verb was
-// actually wanted instead of (or as well as) the runner integration.
+// TimerProvider recognizes timer/alarm queries and hands shell a command
+// via IPC (timers fire in shell, not in phi's short-lived process).
 type TimerProvider struct{}
 
 func (TimerProvider) Name() string { return "timer" }

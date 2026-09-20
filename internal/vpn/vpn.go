@@ -1,7 +1,5 @@
-// Package vpn drives WireGuard tunnels. Configs live at
-// ~/.config/phi/wireguard/ (outside the repo, for private keys). No endpoint,
-// allowed-IPs, or peer address is ever logged. Tunnels from /etc/wireguard
-// are visible without import; import copies to managed directory.
+// Package vpn drives WireGuard tunnels. Configs at ~/.config/phi/wireguard/
+// (outside repo, for private keys). No endpoint, IP or peer logged.
 package vpn
 
 import (
