@@ -27,7 +27,7 @@ func Man(version string) string {
 	b.WriteString(".SH SYNOPSIS\n")
 	b.WriteString(".B phi\n.I command\n.RI [ arguments ... ]\n")
 	b.WriteString(".SH DESCRIPTION\n")
-	b.WriteString("phi is phiOS's single command-line entry point (ADR 016/017).\n")
+	b.WriteString("phi is phiOS's single command-line entry point.\n")
 	b.WriteString("A command not listed below is looked up as\n.B phi-<command>\non\n.BR PATH .\n")
 
 	b.WriteString(".SH COMMANDS\n")

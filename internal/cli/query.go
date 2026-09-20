@@ -44,7 +44,7 @@ future queries. The shell calls this once, when the user actually selects
 a result — never on every keystroke the way ranking itself runs.
 
 phi query refresh-currency <FROM> <TO> is an internal, hidden sub-verb
-(fails ADR 021's own admission test on purpose — it is plumbing for
+(deliberately fails the usual verb-admission test — it is plumbing for
 CurrencyProvider, not a user-facing verb): fetches one exchange rate
 synchronously and writes it to the on-disk cache. CurrencyProvider's own
 Query spawns this as a detached child process rather than calling it

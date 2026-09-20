@@ -27,20 +27,20 @@ Verbs:
                     list | current | show NAME | new NAME [flags] | set NAME [flags]
                     | use NAME [--no-restart] | use --none [--no-restart]
                     | folder add|remove NAME PATH
-  personality       personalities, editable from the panel (delta D-08):
+  personality       personalities, editable from the panel:
                     list | show NAME | new NAME [--from-file F] | write NAME --from-file F
                     | rename OLD NEW | delete NAME
-  memory            review memory proposals at a level (delta D-01):
+  memory            review memory proposals at a level:
                     list | show FILE | accept FILE | reject FILE
                     [--level system|personality|project] [--personality NAME]
                     [--project NAME]
-  chat              the client-side transcript mirror (delta D-05):
+  chat              the client-side transcript mirror:
                     list [--project NAME] | show ID | sync ID --from-file F
                     [--project NAME] [--title T] | pin ID | unpin ID | title ID TEXT
   search QUERY [--project NAME] [--json]
                     search phi-owned markdown (mirrors, archive, memory,
                     instructions). Never queries opencode.
-  session           A2 coding sessions, from phi-owned metadata (delta D-07):
+  session           A2 coding sessions, from phi-owned metadata:
                     list [--json] | show ID
   code DIR [-- ARGS...]
                     open the A2 coding agent in DIR (the only rw mount for the

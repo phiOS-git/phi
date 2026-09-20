@@ -15,7 +15,7 @@ Verbs:
   set KEY VALUE    write VALUE for KEY
   list             list every defined key and its value (unset keys show as such)
 
-KEY is one of the runtime-state keys master plan §5.6 defines. This is a
+KEY is one of the defined runtime-state keys. This is a
 closed set: an unlisted key is rejected, not created. State lives at
 $XDG_STATE_HOME/phi and is never written into any repository.
 `

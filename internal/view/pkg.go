@@ -83,18 +83,18 @@ func pkgReport(entries []pkg.Entry, showUpdates bool) string {
 
 		if cat == pkg.CategoryT4 {
 			b.WriteString("  cannot be enumerated: T4 packages are installed without pacman ever\n")
-			b.WriteString("  recording them, so no pacman query can see them. Q-01 forbids this tier\n")
+			b.WriteString("  recording them, so no pacman query can see them. Policy forbids this tier\n")
 			b.WriteString("  entirely for now, so this row's true state is \"should be none\", not\n")
 			b.WriteString("  \"confirmed none\".\n\n")
 			continue
 		}
 
 		if cat == pkg.CategoryAUR && len(rows) == 0 {
-			b.WriteString("  empty — Q-01 deferred, exactly as expected\n\n")
+			b.WriteString("  empty — no AUR packages, exactly as expected\n\n")
 			continue
 		}
 		if cat == pkg.CategoryAUR && len(rows) > 0 {
-			b.WriteString("  POLICY VIOLATION: Q-01 forbids AUR/T4 packages, and pacman cannot tell\n")
+			b.WriteString("  POLICY VIOLATION: AUR packages are forbidden, and pacman cannot tell\n")
 			b.WriteString("  these apart from a manually pacman -U'd build either — both land here.\n")
 		}
 

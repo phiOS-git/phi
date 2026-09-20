@@ -91,7 +91,7 @@ func AgentSearch(query string, res agent.SearchResults) string {
 	return b.String()
 }
 
-// AgentSessionList renders `phi agent session list` (delta D-07).
+// AgentSessionList renders `phi agent session list`.
 func AgentSessionList(recs []agent.SessionRecord) string {
 	var b strings.Builder
 	if len(recs) == 0 {

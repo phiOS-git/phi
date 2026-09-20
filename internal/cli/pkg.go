@@ -22,7 +22,7 @@ Verbs:
          component versions: phi, phios-dotfiles, the installed phi-* packages
 
 T4 (manual build outside pacman) can never be listed — pacman has no record
-of software it was never told about. Q-01 forbids AUR/T4 entirely for now,
+of software it was never told about. Policy forbids AUR packages entirely,
 so a non-empty AUR row is a policy violation, not routine information.
 `
 
