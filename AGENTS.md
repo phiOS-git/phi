@@ -28,7 +28,7 @@ and is not repeated here.
 
 | Verb | What it does |
 |---|---|
-| `theme` | `render` one template, `set VARIANT` (render every adapter target, reload what changed, record the variant), `preview`, `list`, `check` (WCAG contrast of every checked pair), `contrast`. Generates `phi-shell`'s `Config/Tokens.qml` and `Config/Colors.json`. |
+| `theme` | `render` one template, `set VARIANT [--yes\|-y]` (render every adapter target, reload what changed, record the variant — asks to turn off an active `theme.schedule` first when VARIANT differs from what is active and the call is interactive; `--yes` answers that without asking), `preview`, `list`, `check` (WCAG contrast of every checked pair), `contrast`. Generates `phi-shell`'s `Config/Tokens.qml` and `Config/Colors.json`. |
 | `state` | A closed set of runtime keys under `$XDG_STATE_HOME/phi`, one flat file each. Rejects any unlisted key. |
 | `doctor` | Composes eight checks: disk space, failed systemd units, dotfiles drift, SMART, declared-service status, package categories, external declarations and the `/srv` mount. Every check degrades to `unknown` rather than guessing. |
 | `pkg` | `list` / `check` / `state` / `audit` / `accept` — explicitly-installed packages split by origin, with available updates, plus drift/leak/integrity auditing of declared non-official software (`external.txt`, tiers TC/T2/T3/T4). A non-empty AUR row is a policy violation and is flagged. |

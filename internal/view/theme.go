@@ -42,6 +42,15 @@ func ThemeCheck(results []theme.CheckResult) string {
 	return b.String()
 }
 
+// ThemeScheduleConfirmPrompt renders the y/N confirmation `phi theme set`
+// shows before overriding an active automatic schedule: schedule is
+// theme.schedule's current value ("auto" or "custom" — ScheduleConfirm never
+// asks for "off"). Ends without a newline so the answer is typed on the same
+// line.
+func ThemeScheduleConfirmPrompt(schedule string) string {
+	return fmt.Sprintf("automatic theme switching is on (%s) and will be turned off. Continue? [y/N] ", schedule)
+}
+
 // ThemeList renders `phi theme list`: one row per design/adapters.txt entry.
 func ThemeList(adapters []theme.Adapter) string {
 	var b strings.Builder

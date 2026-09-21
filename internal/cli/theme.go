@@ -18,10 +18,19 @@ Verbs:
   render [--variant NAME] TEMPLATE [DESTINATION]
                     render one template against the design tokens; writes to
                     DESTINATION, or standard output when it is omitted
-  set VARIANT [--dry-run]
+  set VARIANT [--dry-run] [--yes|-y]
                     render every design/adapters.txt target for VARIANT,
                     reload the ones that changed, and record VARIANT as the
-                    active theme
+                    active theme. If automatic schedule switching
+                    (theme.schedule) is on and VARIANT differs from the
+                    currently active one, asks for confirmation before
+                    turning the schedule off, default No — declining applies
+                    nothing and exits non-zero. --yes/-y answers that
+                    confirmation without asking, on or off a terminal. Off a
+                    terminal without the flag, the schedule is left exactly
+                    as it was and VARIANT is still applied: this is what
+                    scripts, the pacman regen hook and phi-shell's own
+                    scheduled switch rely on, unchanged
   preview [--variant NAME]
                     render design/preview.tmpl to standard output
   list              list the themed targets design/adapters.txt declares
@@ -167,10 +176,15 @@ func runThemePreview(args []string, root string, stdout, stderr io.Writer) int {
 
 func runThemeSet(args []string, root string, stdout, stderr io.Writer) int {
 	dryRun := false
+	yes := false
 	var variant string
 	for _, a := range args {
-		if a == "--dry-run" {
+		switch a {
+		case "--dry-run":
 			dryRun = true
+			continue
+		case "--yes", "-y":
+			yes = true
 			continue
 		}
 		if variant != "" {
@@ -186,6 +200,29 @@ func runThemeSet(args []string, root string, stdout, stderr io.Writer) int {
 	if _, err := tokens.Load(root, variant); err != nil {
 		fmt.Fprintf(stderr, "%s: theme: %v\n", progName, err)
 		return 1
+	}
+
+	// --dry-run never writes anything (see theme.Set's own contract below) —
+	// a schedule override belongs to an actual apply, not a preview, so this
+	// whole check is skipped under it rather than prompting about a change
+	// that would not really happen.
+	if !dryRun {
+		schedule := theme.CurrentSchedule()
+		sameVariant := variant == theme.CurrentVariant()
+		tty := IsTerminal(os.Stdin) && IsTerminal(os.Stdout)
+		turnOff, proceed := theme.ScheduleConfirm(schedule, sameVariant, tty, yes, func() bool {
+			return confirmYesNo(stdout, os.Stdin, view.ThemeScheduleConfirmPrompt(schedule))
+		})
+		if !proceed {
+			fmt.Fprintf(stderr, "%s: theme: cancelled — automatic switching is still on, nothing applied\n", progName)
+			return 1
+		}
+		if turnOff {
+			if err := theme.TurnOffSchedule(); err != nil {
+				fmt.Fprintf(stderr, "%s: theme: %v\n", progName, err)
+				return 1
+			}
+		}
 	}
 
 	result, err := theme.Set(root, variant, dryRun)
