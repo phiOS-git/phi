@@ -60,11 +60,43 @@ func TestSiteSearchUnknownKeyword(t *testing.T) {
 	}
 }
 
+func TestSiteSearchByKey(t *testing.T) {
+	s, ok := siteSearchByKey("WIKI") // case-insensitive
+	if !ok || s.host != "en.wikipedia.org" {
+		t.Fatalf("siteSearchByKey(\"WIKI\") = %+v, %v, want the Wikipedia entry", s, ok)
+	}
+	if _, ok := siteSearchByKey("not-a-site"); ok {
+		t.Error("siteSearchByKey(\"not-a-site\") = ok, want not found")
+	}
+}
+
+// TestSiteSearchTagDefaultsUnknownKeyword covers the defensive branch
+// query.go's lockedTagDefaults should never actually reach (Run only ever
+// calls TagDefaults with a keyword prefixProviders already routed to this
+// provider), but TagDefaults must still degrade quietly rather than panic.
+func TestSiteSearchTagDefaultsUnknownKeyword(t *testing.T) {
+	if got := (SiteSearchProvider{}).TagDefaults(context.Background(), "not-a-site"); got != nil {
+		t.Errorf("TagDefaults(\"not-a-site\") = %v, want nil", got)
+	}
+}
+
+// TestSiteSearchTagDefaultsDegradesWithoutLibreWolf covers the "skip
+// anything needing sqlite3" contract: with no ~/.librewolf at all,
+// TagDefaults must return nil rather than erroring — home is pointed at a
+// fresh temp dir so this never touches the real machine's own LibreWolf
+// profile.
+func TestSiteSearchTagDefaultsDegradesWithoutLibreWolf(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if got := (SiteSearchProvider{}).TagDefaults(context.Background(), "wiki"); got != nil {
+		t.Errorf("TagDefaults(\"wiki\") with no LibreWolf profile = %v, want nil", got)
+	}
+}
+
 func TestSiteSearchExplicitScoreSurvivesRanking(t *testing.T) {
-	// The regression this whole shape guards against (the
-	// timer/alarm entry already found this once): a Result whose Score is
-	// left at Rank's zero default, and whose Title doesn't fuzzy-match the
-	// raw query, is silently dropped rather than ranked low.
+	// Guards against the same failure class as TimerProvider's own
+	// regression test: a Result whose Score is left at Rank's zero
+	// default, and whose Title doesn't fuzzy-match the raw query, is
+	// silently dropped rather than ranked low.
 	r := siteQuery(t, "wiki linux kernel")
 	ranked := Rank(r, "wiki linux kernel", nil)
 	if len(ranked) != 1 {

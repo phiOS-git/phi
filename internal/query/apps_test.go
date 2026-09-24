@@ -49,6 +49,42 @@ func TestApplicationsProviderAppPrefixMatches(t *testing.T) {
 	}
 }
 
+// TestApplicationsProviderEmptyQueryReturnsAllApps checks the
+// provider-level contract Query("") must honour: it returns every
+// application, unscored (Score 0), so the caller (query.go's
+// emptyQueryApps and TagDefaults below) decides the order.
+func TestApplicationsProviderEmptyQueryReturnsAllApps(t *testing.T) {
+	withFakeDesktopEntries(t)
+	r := ApplicationsProvider{}.Query(context.Background(), "")
+	if len(r) != 1 || r[0].Title != "Firefox" {
+		t.Fatalf("Query(\"\") = %v, want the one fake Firefox entry", r)
+	}
+	if r[0].Score != 0 {
+		t.Errorf("Query(\"\")[0].Score = %v, want 0 — the caller decides the order", r[0].Score)
+	}
+}
+
+func TestApplicationsProviderTagDefaultsAlphabetizes(t *testing.T) {
+	dir := t.TempDir()
+	appsDir := filepath.Join(dir, "applications")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Zathura", "Firefox"} {
+		content := "[Desktop Entry]\nType=Application\nName=" + name + "\nExec=" + name + "\n"
+		if err := os.WriteFile(filepath.Join(appsDir, name+".desktop"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_DATA_DIRS", t.TempDir())
+
+	r := ApplicationsProvider{}.TagDefaults(context.Background(), "app")
+	if len(r) != 2 || r[0].Title != "Firefox" || r[1].Title != "Zathura" {
+		t.Fatalf("TagDefaults(\"app\") = %v, want [Firefox, Zathura] alphabetized", r)
+	}
+}
+
 func TestApplicationsProviderAppPrefixExcludesNonMatch(t *testing.T) {
 	withFakeDesktopEntries(t)
 	if r := (ApplicationsProvider{}).Query(context.Background(), "app zzz-no-such-app"); r != nil {
@@ -184,12 +220,12 @@ func containsDir(dirs []string, want string) bool {
 	return false
 }
 
-// TestApplicationsProviderFindsFlatpakExport is the regression this commit
-// exists for: a Flatpak app exports a .desktop file only under
+// TestApplicationsProviderFindsFlatpakExport covers a Flatpak app that
+// exports a .desktop file only under
 // <data-home>/flatpak/exports/share/applications, which XDG_DATA_DIRS's
-// hardcoded default never covers — so before desktopEntryDirs() added the
-// explicit fallback, this app would have been entirely invisible to the
-// launcher despite being correctly installed.
+// hardcoded default never covers — without desktopEntryDirs()'s explicit
+// fallback, this app would be entirely invisible to the launcher despite
+// being correctly installed.
 func TestApplicationsProviderFindsFlatpakExport(t *testing.T) {
 	dataHome := t.TempDir()
 	exportsDir := filepath.Join(dataHome, "flatpak", "exports", "share", "applications")

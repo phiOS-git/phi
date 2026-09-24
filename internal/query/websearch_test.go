@@ -46,6 +46,18 @@ func TestWebSearchPrefixCaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestWebSearchTagDefaultsDegradesWithoutLibreWolf covers the "skip
+// anything needing sqlite3" contract: with no ~/.librewolf at all,
+// TagDefaults must return nil rather than erroring — HOME is pointed at a
+// fresh temp dir so this never touches the real machine's own LibreWolf
+// profile.
+func TestWebSearchTagDefaultsDegradesWithoutLibreWolf(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if got := (WebSearchProvider{}).TagDefaults(context.Background(), "web"); got != nil {
+		t.Errorf("TagDefaults(\"web\") with no LibreWolf profile = %v, want nil", got)
+	}
+}
+
 func TestWebSearchWordStartingWithWebNotMisread(t *testing.T) {
 	// "webcam settings" must not be read as prefix "web" + "cam settings".
 	r := WebSearchProvider{}.Query(context.Background(), "webcam settings")

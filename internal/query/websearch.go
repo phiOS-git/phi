@@ -43,3 +43,24 @@ func (p WebSearchProvider) Query(_ context.Context, q string) []Result {
 func webSearchURL(q string) string {
 	return "https://duckduckgo.com/?q=" + url.QueryEscape(q)
 }
+
+// TagDefaults returns the "web" tag's default list: the user's own
+// LibreWolf bookmarks, top history by frecency, and recent search-bar
+// terms — "common usage" for the "web" tag locked with nothing typed yet,
+// never content this provider invents. Every missing piece (no LibreWolf
+// profile, no sqlite3, a table that doesn't exist) degrades to
+// contributing nothing, the same graceful-degradation contract every
+// other provider gets from runCommand.
+func (p WebSearchProvider) TagDefaults(ctx context.Context, _ string) []Result {
+	var out []Result
+	if rows, ok := queryLibreWolfDB(ctx, librewolfPlacesDB, librewolfBookmarksSQL("")); ok {
+		out = append(out, librewolfLinkResults(p.Name(), "websearch:", rows)...)
+	}
+	if rows, ok := queryLibreWolfDB(ctx, librewolfPlacesDB, librewolfHistorySQL("")); ok {
+		out = append(out, librewolfLinkResults(p.Name(), "websearch:", rows)...)
+	}
+	if rows, ok := queryLibreWolfDB(ctx, librewolfFormHistoryDB, librewolfSearchTermsSQL()); ok {
+		out = append(out, librewolfSearchTermResults(p.Name(), rows)...)
+	}
+	return out
+}

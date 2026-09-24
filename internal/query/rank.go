@@ -113,7 +113,12 @@ func Rank(results []Result, q string, frecency *Frecency) []Result {
 				continue // no match at all — excluded, not ranked last
 			}
 		}
-		if frecency != nil {
+		// ClipboardProvider sets its own decreasing Score to express
+		// pinned-first, newest-first order (clipboard.go) — adding
+		// selection frecency on top would let an old, frequently-copied
+		// entry outrank something just copied, the opposite of what that
+		// order means.
+		if frecency != nil && r.Provider != "clipboard" {
 			score += frecency.Score(r.ID) * frecencyWeight
 		}
 		score += providerTier(r.Provider)

@@ -78,6 +78,106 @@ func TestFrecencyDecaysWithAge(t *testing.T) {
 	}
 }
 
+func TestRecordResultStoresSnapshot(t *testing.T) {
+	f := newTestFrecency(t)
+	snap := Result{ID: "app:firefox.desktop", Provider: "application", Title: "Firefox", Score: 9080}
+	if err := f.RecordResult("app:firefox.desktop", &snap); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	got := f.Snapshots(map[string]bool{"application": true})
+	if len(got) != 1 || got[0].Title != "Firefox" {
+		t.Fatalf("Snapshots = %v, want the stored Firefox snapshot", got)
+	}
+	// The caller's own fully-ranked Score (tier + frecency already folded
+	// in) must never be replayed as if it were an unranked provider score.
+	if got[0].Score != 0 {
+		t.Errorf("stored snapshot Score = %v, want 0 (zeroed on store)", got[0].Score)
+	}
+}
+
+func TestRecordResultDropsRich(t *testing.T) {
+	f := newTestFrecency(t)
+	snap := Result{ID: "calc:2+2", Provider: "calculator", Title: "4", Rich: &RichResult{Kind: "value", Headline: "4"}}
+	if err := f.RecordResult("calc:2+2", &snap); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	got := f.Snapshots(map[string]bool{"calculator": true})
+	if len(got) != 1 || got[0].Rich != nil {
+		t.Fatalf("Snapshots = %v, want Rich stripped from the stored snapshot", got)
+	}
+}
+
+func TestRecordResultSkipsClipboardSnapshot(t *testing.T) {
+	f := newTestFrecency(t)
+	snap := Result{ID: "clip:123", Provider: "clipboard", Title: "some clipping"}
+	if err := f.RecordResult("clip:123", &snap); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	if got := f.Snapshots(map[string]bool{"clipboard": true}); got != nil {
+		t.Errorf("Snapshots = %v, want no snapshot stored for a clipboard result", got)
+	}
+	// The plain count/lastUsed bump must still have happened.
+	if got := f.Score("clip:123"); got <= 0 {
+		t.Errorf("Score(clip:123) = %v, want > 0 — RecordResult must still bump count/lastUsed", got)
+	}
+}
+
+func TestRecordResultNilSnapshotKeepsExisting(t *testing.T) {
+	f := newTestFrecency(t)
+	snap := Result{ID: "app:firefox.desktop", Provider: "application", Title: "Firefox"}
+	if err := f.RecordResult("app:firefox.desktop", &snap); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	// The plain one-argument form (Record, equivalent to RecordResult with
+	// a nil snapshot) must not erase the snapshot the JSON form built up.
+	if err := f.Record("app:firefox.desktop"); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	got := f.Snapshots(map[string]bool{"application": true})
+	if len(got) != 1 || got[0].Title != "Firefox" {
+		t.Fatalf("Snapshots after a plain Record = %v, want the snapshot untouched", got)
+	}
+}
+
+func TestRecordResultRefreshesSnapshot(t *testing.T) {
+	f := newTestFrecency(t)
+	old := Result{ID: "app:firefox.desktop", Provider: "application", Title: "Firefox (old)"}
+	if err := f.RecordResult("app:firefox.desktop", &old); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	fresh := Result{ID: "app:firefox.desktop", Provider: "application", Title: "Firefox (new)"}
+	if err := f.RecordResult("app:firefox.desktop", &fresh); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	got := f.Snapshots(map[string]bool{"application": true})
+	if len(got) != 1 || got[0].Title != "Firefox (new)" {
+		t.Fatalf("Snapshots = %v, want the refreshed Title", got)
+	}
+}
+
+func TestSnapshotsFiltersByProviderAndRanksByFrecency(t *testing.T) {
+	f := newTestFrecency(t)
+	appSnap := Result{ID: "app:a", Provider: "application", Title: "A"}
+	fileSnap := Result{ID: "file:b", Provider: "file", Title: "B"}
+	if err := f.RecordResult("app:a", &appSnap); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	if err := f.RecordResult("file:b", &fileSnap); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	got := f.Snapshots(map[string]bool{"application": true})
+	if len(got) != 1 || got[0].ID != "app:a" {
+		t.Fatalf("Snapshots(application) = %v, want only the application snapshot", got)
+	}
+}
+
+func TestSnapshotsNilReceiverIsSafe(t *testing.T) {
+	var f *Frecency
+	if got := f.Snapshots(map[string]bool{"application": true}); got != nil {
+		t.Errorf("Snapshots on a nil *Frecency = %v, want nil", got)
+	}
+}
+
 func TestFrecencyFrequencySaturates(t *testing.T) {
 	f := newTestFrecency(t)
 	for i := 0; i < 50; i++ {

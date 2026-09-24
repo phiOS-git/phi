@@ -13,10 +13,11 @@ type ApplicationsProvider struct{}
 
 func (ApplicationsProvider) Name() string { return "application" }
 
+// Query, called with q == "", returns every application unscored (Score
+// left at 0, letting the caller decide the order) — this is what
+// query.go's emptyQueryApps and TagDefaults below both build on to list
+// every application for an empty or locked-but-untyped "app" query.
 func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
-	if q == "" {
-		return nil
-	}
 	// Prefix "app <name>": strip "app " and score term only, not full q.
 	prefixed := false
 	term := q
@@ -67,6 +68,17 @@ func (p ApplicationsProvider) Query(_ context.Context, q string) []Result {
 		}
 	}
 	return out
+}
+
+// TagDefaults returns the "app" tag's default list: literally every
+// application, alphabetized (Query(ctx, "") itself returns them in
+// directory-scan order, which is arbitrary and a poor fit for a defaults
+// list a user is meant to browse) — the "app" tag locked with nothing
+// typed yet has nothing more specific to fall back to than that.
+func (p ApplicationsProvider) TagDefaults(ctx context.Context, _ string) []Result {
+	apps := p.Query(ctx, "")
+	sortByFrecencyThenTitle(apps, nil)
+	return apps
 }
 
 // desktopEntryDirs follows the XDG base directory spec's search order for
@@ -134,9 +146,7 @@ type desktopEntry struct {
 // raw content. Deliberately not a general INI parser: only the four keys
 // this provider needs, first occurrence wins (a real .desktop file may
 // have localized "Name[it]=" variants after the bare "Name=" — skipped,
-// since this project's own language rule (CLAUDE.md) keeps everything
-// this agent writes in English and there is no requirement here to
-// localize the launcher).
+// since the launcher only ever needs the plain English name).
 func parseDesktopEntry(content string) (desktopEntry, bool) {
 	var e desktopEntry
 	inSection := false

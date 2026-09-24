@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -11,25 +12,37 @@ import (
 )
 
 const queryUsage = `usage: phi query [--prefix <key>] <text>
-       phi query record <id>
+       phi query record <id> [<result-json>]
 
 Ranks launcher results for <text> across every provider (applications,
 open windows, calculator, unit + currency conversion, directory jump via
-zoxide, SSH hosts, shell commands, web search, files, system actions) and
-prints them, most relevant first. JSON when stdout is redirected (the
-shape phi-shell's Launcher parses); a plain list on a terminal, for
-testing ranking by hand.
+zoxide, SSH hosts, shell commands, web search, files, system actions,
+clipboard history) and prints them, most relevant first. JSON when stdout
+is redirected (the shape phi-shell's Launcher parses); a plain list on a
+terminal, for testing ranking by hand.
+
+An empty <text> with no --prefix returns every application, ordered by
+frecency then title — this is the launcher's own browse-everything list,
+not an absence of results; every other provider deliberately answers
+nothing for it. --prefix <key> locked with <text> equal to just that
+keyword (nothing typed after it yet) similarly returns that category's own
+"common usage" defaults instead of nothing: the user's own selection
+history for it, then a provider-specific fallback (every application,
+recently-used files and common directories, every phi verb, or LibreWolf
+bookmarks/history/search terms for web and the per-site keywords below) —
+see internal/query/query.go's lockedTagDefaults.
 
 A phi verb typed on its own, without the leading "phi ", is recognised and
 run as one ("theme set dark" runs "phi theme set dark") — see the
 Commands list in "phi help" for the full verb set.
 
-A leading keyword ("web ", "phi ", "wiki ", ...) in <text> boosts that
-category to the top, ranking still applied to everything else. --prefix
-<key> additionally restricts the results to that one category — phi-
-shell's Launcher sends this once the user has pressed Tab to "lock" a
-prefix; <text> is unchanged either way, keyword included. See
-internal/query/query.go's prefixProviders for the full keyword list.
+A leading keyword ("web ", "phi ", "wiki ", "copy "/"clip "/"cp ", ...) in
+<text> boosts that category to the top, ranking still applied to
+everything else. --prefix <key> additionally restricts the results to
+that one category — phi-shell's Launcher sends this once the user has
+pressed Tab to "lock" a prefix; <text> is unchanged either way, keyword
+included. See internal/query/query.go's prefixProviders for the full
+keyword list.
 
 The calculator understands arithmetic ("2+2*3", "sqrt(2)!", "2^10"),
 constants and functions, unit conversion in free form ("100km to m",
@@ -39,9 +52,21 @@ inequalities ("solve x^2-4=0", "x^2-4 < 0"), calculus ("d/dx sin(x)",
 more than one line carry a "rich" payload (steps, roots, a sampled curve)
 the shell renders as a card.
 
+"copy "/"clip "/"cp " search clipboard history phi-shell itself records
+(entries and pins under $XDG_STATE_HOME/phi/clipboard/) — pinned first,
+then newest first, filtered by the rest of <text>. Selecting one copies
+that entry back onto the clipboard; this provider never writes an entry
+itself.
+
 phi query record <id> marks a result as used, for frecency ranking on
 future queries. The shell calls this once, when the user actually selects
-a result — never on every keystroke the way ranking itself runs.
+a result — never on every keystroke the way ranking itself runs. Given a
+second argument — that Result's own JSON as phi query printed it — the
+selection is additionally kept as a snapshot for that id, seeding the
+locked-tag "common usage" default described above; a malformed second
+argument is ignored and the plain one-argument form still applies. A
+clipboard result's snapshot is never stored (its entries are transient
+files, not history worth remembering the shape of).
 
 phi query refresh-currency <FROM> <TO> is an internal, hidden sub-verb
 (deliberately fails the usual verb-admission test — it is plumbing for
@@ -100,7 +125,7 @@ func phiVerbSet() map[string]bool {
 }
 
 func runQueryRecord(args []string, stdout, stderr io.Writer) int {
-	if len(args) != 1 {
+	if len(args) < 1 || len(args) > 2 {
 		fmt.Fprint(stderr, queryUsage)
 		return 1
 	}
@@ -114,7 +139,19 @@ func runQueryRecord(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: query: %v\n", progName, err)
 		return 1
 	}
-	if err := f.Record(args[0]); err != nil {
+
+	var snapshot *query.Result
+	if len(args) == 2 {
+		var r query.Result
+		if err := json.Unmarshal([]byte(args[1]), &r); err == nil {
+			snapshot = &r
+		}
+		// A malformed second argument still records the plain selection
+		// (snapshot stays nil) rather than failing the whole call — the
+		// shell's own frecency bump must not break because one snapshot
+		// payload was bad.
+	}
+	if err := f.RecordResult(args[0], snapshot); err != nil {
 		fmt.Fprintf(stderr, "%s: query: %v\n", progName, err)
 		return 1
 	}

@@ -2,16 +2,17 @@ package query
 
 import (
 	"context"
+	"sort"
 	"strings"
 )
 
 // PhiCommandProvider recognises phi's own verbs typed without the leading
-// "phi " (Requested: "runner bar should read phi commands without
-// writing the phi prefix (eg. 'theme set dark' is recognised as 'phi theme
-// set dark')"). CommandProvider already runs "phi theme set dark" typed in
-// full, by resolving "phi" via exec.LookPath like any other binary on
-// PATH — this provider only adds the bare-verb recognition that needs,
-// since "theme", "state", "doctor" and so on are not binaries themselves.
+// "phi " — so the runner bar reads a bare "theme set dark" the same as
+// "phi theme set dark". CommandProvider already runs "phi theme set dark"
+// typed in full, by resolving "phi" via exec.LookPath like any other
+// binary on PATH — this provider only adds the bare-verb recognition
+// that needs, since "theme", "state", "doctor" and so on are not
+// binaries themselves.
 //
 // Verbs is built by the caller (internal/cli's query verb) from
 // view.Commands — the single source Help, ZshCompletion and Man already
@@ -25,14 +26,13 @@ type PhiCommandProvider struct {
 func (PhiCommandProvider) Name() string { return "phi" }
 
 func (p PhiCommandProvider) Query(_ context.Context, q string) []Result {
-	// runner-bar prefix feature: typing the literal word
-	// "phi" first (as its own prefix, "phi theme set dark") must work
-	// exactly like typing the bare verb ("theme set dark") — this provider
-	// was the reported bug, since it only ever matched the bare form.
-	// CommandProvider still answers the literal "phi ..." text too (it
-	// resolves via exec.LookPath like any other binary), at a lower tier;
-	// this makes the same input resolve here as well, at the tier meant
-	// for it.
+	// runner-bar prefix feature: typing the literal word "phi" first (as
+	// its own prefix, "phi theme set dark") must work exactly like typing
+	// the bare verb ("theme set dark"), so this strips a leading "phi "
+	// before checking for a known verb. CommandProvider still answers the
+	// literal "phi ..." text too (it resolves via exec.LookPath like any
+	// other binary), at a lower tier; this makes the same input resolve
+	// here as well, at the tier meant for it.
 	rest := q
 	if len(q) >= 4 && strings.EqualFold(q[:4], "phi ") {
 		rest = strings.TrimSpace(q[4:])
@@ -48,4 +48,28 @@ func (p PhiCommandProvider) Query(_ context.Context, q string) []Result {
 		Score:  90, // trusted as-is, same confidence as CommandProvider's own match
 		Action: Action{Kind: ActionExecTerminal, Data: map[string]string{"command": command}},
 	}}
+}
+
+// TagDefaults returns the "phi" tag's default list: every phi verb.
+// Query itself only ever recognises one already fully typed out —
+// the "phi" tag locked with nothing typed yet has no bare verb for it to
+// recognise, so this lists the whole set instead, alphabetized for a
+// stable, scannable order.
+func (p PhiCommandProvider) TagDefaults(_ context.Context, _ string) []Result {
+	verbs := make([]string, 0, len(p.Verbs))
+	for v := range p.Verbs {
+		verbs = append(verbs, v)
+	}
+	sort.Strings(verbs)
+
+	results := make([]Result, 0, len(verbs))
+	for _, v := range verbs {
+		command := "phi " + v
+		results = append(results, Result{
+			ID: "phi:" + v, Provider: p.Name(),
+			Title: command, Subtitle: "run phi command",
+			Action: Action{Kind: ActionExecTerminal, Data: map[string]string{"command": command}},
+		})
+	}
+	return results
 }

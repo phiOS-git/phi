@@ -53,9 +53,10 @@ func TestPhiCommandProviderNilVerbsIsNoop(t *testing.T) {
 	}
 }
 
-// Requested: "phi prefixes in the runner bar don't seem to work" — this
-// provider used to only match the bare verb, never the literal "phi "
-// prefix (CommandProvider answered that text instead, at a lower tier).
+// TestPhiCommandProviderRecognisesPhiPrefix checks the literal "phi "
+// prefix, not just the bare verb — CommandProvider answers that text
+// instead, at a lower tier, so this provider must also recognise it
+// directly.
 func TestPhiCommandProviderRecognisesPhiPrefix(t *testing.T) {
 	p := PhiCommandProvider{Verbs: testVerbs()}
 	results := p.Query(context.Background(), "phi theme set dark")
@@ -68,6 +69,30 @@ func TestPhiCommandProviderRecognisesPhiPrefix(t *testing.T) {
 	}
 	if got.ID != "phi:theme set dark" {
 		t.Errorf("ID = %q, want the same ID the bare-verb form produces, so frecency treats them as one command", got.ID)
+	}
+}
+
+func TestPhiCommandProviderTagDefaultsListsEveryVerbAlphabetized(t *testing.T) {
+	p := PhiCommandProvider{Verbs: testVerbs()}
+	got := p.TagDefaults(context.Background(), "phi")
+	if len(got) != 3 {
+		t.Fatalf("TagDefaults(\"phi\") = %v, want one result per verb", got)
+	}
+	want := []string{"phi doctor", "phi state", "phi theme"} // alphabetized
+	for i, title := range want {
+		if got[i].Title != title {
+			t.Fatalf("TagDefaults(\"phi\")[%d].Title = %q, want %q (full: %v)", i, got[i].Title, title, got)
+		}
+		if got[i].Action.Data["command"] != title {
+			t.Errorf("TagDefaults(\"phi\")[%d] command = %q, want %q", i, got[i].Action.Data["command"], title)
+		}
+	}
+}
+
+func TestPhiCommandProviderTagDefaultsNilVerbsIsEmpty(t *testing.T) {
+	p := PhiCommandProvider{}
+	if got := p.TagDefaults(context.Background(), "phi"); len(got) != 0 {
+		t.Errorf("TagDefaults with no Verbs set = %v, want empty", got)
 	}
 }
 

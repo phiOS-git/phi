@@ -157,6 +157,30 @@ func TestAskAgentProviderRequiresTwoWords(t *testing.T) {
 	}
 }
 
+// TestRankSkipsFrecencyForClipboard guards ClipboardProvider's own
+// pinned-first, newest-first order (clipboard.go): adding selection
+// frecency on top, the way every other provider gets, would let an old
+// but frequently-copied entry outrank one just copied, the opposite of
+// what "newest first" means for a clipboard history.
+func TestRankSkipsFrecencyForClipboard(t *testing.T) {
+	f := newTestFrecency(t)
+	for i := 0; i < 20; i++ {
+		f.Record("clip:old")
+	}
+
+	results := []Result{
+		{ID: "clip:old", Provider: "clipboard", Title: "old but frequently copied", Score: 10},
+		{ID: "clip:new", Provider: "clipboard", Title: "just copied", Score: 20},
+	}
+	ranked := Rank(results, "", f)
+	if len(ranked) != 2 || ranked[0].ID != "clip:new" {
+		t.Fatalf("Rank did not respect ClipboardProvider's own explicit Score order: got %v", ranked)
+	}
+	if ranked[0].Score != 20+tierOtherAction || ranked[1].Score != 10+tierOtherAction {
+		t.Errorf("Rank added frecency on top of a clipboard result's own Score: got %v", ranked)
+	}
+}
+
 func TestIsSubsequence(t *testing.T) {
 	if !isSubsequence("firefox", "fx") {
 		t.Error("expected fx to be a subsequence of firefox")
