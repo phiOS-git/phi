@@ -210,7 +210,7 @@ func (p FilesProvider) TagDefaults(_ context.Context, _ string) []Result {
 			results = append(results, Result{
 				ID: "file:" + path, Provider: p.Name(),
 				Title: filepath.Base(path), Subtitle: path,
-				Action: Action{Kind: ActionExec, Data: map[string]string{"command": openCommand(path)}},
+				Action: Action{Kind: ActionExec, Data: map[string]string{"command": openCommand(path), "path": path}},
 			})
 			count++
 		}
@@ -224,7 +224,7 @@ func (p FilesProvider) TagDefaults(_ context.Context, _ string) []Result {
 		results = append(results, Result{
 			ID: "file:" + dir, Provider: p.Name(),
 			Title: title, Subtitle: dir,
-			Action: Action{Kind: ActionExec, Data: map[string]string{"command": openCommand(dir)}},
+			Action: Action{Kind: ActionExec, Data: map[string]string{"command": openCommand(dir), "path": dir}},
 		})
 	}
 

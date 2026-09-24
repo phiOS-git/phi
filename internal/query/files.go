@@ -213,7 +213,7 @@ func (p FilesProvider) Query(ctx context.Context, q string) []Result {
 		results = append(results, Result{
 			ID: "file:" + m.path, Provider: p.Name(),
 			Title: filepath.Base(m.path), Subtitle: m.path, Score: m.score,
-			Action: Action{Kind: ActionExec, Data: map[string]string{"command": openCommand(m.path)}},
+			Action: Action{Kind: ActionExec, Data: map[string]string{"command": openCommand(m.path), "path": m.path}},
 		})
 	}
 	return results

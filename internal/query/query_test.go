@@ -264,3 +264,129 @@ func TestSnapshotsForKeywordFiltersSiteHost(t *testing.T) {
 		t.Fatalf("snapshotsForKeyword(..., \"wiki\") = %v, want only the Wikipedia snapshot", got)
 	}
 }
+
+// fakeProvider is a minimal Provider that always returns the same fixed
+// results regardless of q, for tests that need full control over which
+// providers "matched" independent of any real provider's own query
+// parsing.
+type fakeProvider struct {
+	name    string
+	results []Result
+}
+
+func (f fakeProvider) Name() string                               { return f.name }
+func (f fakeProvider) Query(_ context.Context, _ string) []Result { return f.results }
+
+// TestRunBoostsMathOnConversionQuery covers looksLikeMath's own path: a
+// query that plainly asks for a unit conversion must rank the calculator
+// result first even though an application also matched (and normally
+// outranks it — tierApps sits well above tierMath, rank.go).
+func TestRunBoostsMathOnConversionQuery(t *testing.T) {
+	providers := []Provider{
+		fakeProvider{name: "application", results: []Result{
+			{ID: "app:meters", Provider: "application", Title: "Meters Converter", Score: 500},
+		}},
+		CalculatorProvider{},
+	}
+	q := "100 km to m"
+	got := Run(context.Background(), providers, q, nil, "")
+	if len(got) == 0 || got[0].Provider != "calculator" {
+		t.Fatalf("Run(%q) = %v, want the calculator conversion boosted to the front", q, got)
+	}
+}
+
+// TestRunBoostsMathWhenOnlyFallbacksMatch covers onlyFallbackMatches: a
+// query that does not itself look like math (looksLikeMath is false) must
+// still boost a calculator/currency result to the front when everything
+// else in the result set is one of the always-present
+// websearch/sitesearch/agent fallbacks, since none of those is a real
+// match either.
+func TestRunBoostsMathWhenOnlyFallbacksMatch(t *testing.T) {
+	q := "banana split"
+	if looksLikeMath(q) {
+		t.Fatalf("test setup: %q must not itself look like math, to isolate the only-fallback-matches path", q)
+	}
+	providers := []Provider{
+		fakeProvider{name: "websearch", results: []Result{{ID: "w1", Provider: "websearch", Title: "Search the web", Score: 10}}},
+		fakeProvider{name: "agent", results: []Result{{ID: "a1", Provider: "agent", Title: "Ask AI", Score: 10}}},
+		fakeProvider{name: "calculator", results: []Result{{ID: "calc1", Provider: "calculator", Title: "42", Score: 100}}},
+	}
+	got := Run(context.Background(), providers, q, nil, "")
+	if len(got) == 0 || got[0].Provider != "calculator" {
+		t.Fatalf("Run(%q) = %v, want the calculator result boosted to the front since only fallbacks otherwise matched", q, got)
+	}
+}
+
+// TestRunKeepsApplicationFirstForGameLikeQuery guards against the math
+// boost overreaching: "2048 game" contains a digit but plainly means an
+// application, not arithmetic (looksLikeMath must stay false, see
+// TestLooksLikeMath), and a real application match means the
+// only-fallback-matches condition does not hold either, so the
+// application must keep its normal tier-order lead.
+func TestRunKeepsApplicationFirstForGameLikeQuery(t *testing.T) {
+	q := "2048 game"
+	if looksLikeMath(q) {
+		t.Fatalf("test setup: %q must not look like math", q)
+	}
+	providers := []Provider{
+		fakeProvider{name: "application", results: []Result{{ID: "app:2048", Provider: "application", Title: "2048", Score: 500}}},
+		fakeProvider{name: "calculator", results: []Result{{ID: "calc1", Provider: "calculator", Title: "2048", Score: 100}}},
+	}
+	got := Run(context.Background(), providers, q, nil, "")
+	if len(got) == 0 || got[0].Provider != "application" {
+		t.Fatalf("Run(%q) = %v, want the application result to stay first, not displaced by a math boost", q, got)
+	}
+}
+
+// TestRunMathBoostDoesNotOverrideADifferentExplicitPrefix guards
+// prefixRoutesToMath: "phi" is itself a known constant to
+// CalculatorProvider (the golden ratio), so a query like "phi x=2" can
+// parse as a real equation even though the user's "phi" is the runner-bar
+// prefix keyword, not the constant. The prefix's own boost (routing to
+// PhiCommandProvider) must win; the math boost must not override an
+// explicit different-prefix routing decision just because the raw text
+// happens to also parse as math.
+func TestRunMathBoostDoesNotOverrideADifferentExplicitPrefix(t *testing.T) {
+	q := "phi x=2"
+	if !looksLikeMath(q) {
+		t.Fatalf("test setup: %q must look like math, to actually exercise the guard", q)
+	}
+	if key := detectPrefix(q); key != "phi" {
+		t.Fatalf("test setup: detectPrefix(%q) = %q, want \"phi\"", q, key)
+	}
+	providers := []Provider{
+		fakeProvider{name: "phi", results: []Result{{ID: "phi:x", Provider: "phi", Title: "phi x", Score: 500}}},
+		fakeProvider{name: "calculator", results: []Result{{ID: "calc1", Provider: "calculator", Title: "x = 1.236", Score: 100}}},
+	}
+	got := Run(context.Background(), providers, q, nil, "")
+	if len(got) == 0 || got[0].Provider != "phi" {
+		t.Fatalf("Run(%q) = %v, want the explicit \"phi\" prefix boost to win over the coincidental math parse", q, got)
+	}
+}
+
+// TestLooksLikeMath covers the conservative digit-plus-operator/conversion
+// rule directly: a bare digit is never enough on its own ("7zip", "2048
+// game", "mp3" all have one but mean an application/format), it also
+// needs an arithmetic character or to parse as a real conversion.
+func TestLooksLikeMath(t *testing.T) {
+	cases := map[string]bool{
+		"7zip":              false,
+		"2048 game":         false,
+		"mp3":               false,
+		"firefox":           false,
+		"gimp2":             false,
+		"":                  false,
+		"km to m":           false, // a real conversion shape, but no digit at all
+		"2 + 2":             true,
+		"10% of 50":         true,
+		"(1+2)*3":           true,
+		"solve x^2 - 4 = 0": true,
+		"100 km to m":       true,
+		"100 usd to eur":    true,
+	}
+	for q, want := range cases {
+		if got := looksLikeMath(q); got != want {
+			t.Errorf("looksLikeMath(%q) = %v, want %v", q, got, want)
+		}
+	}
+}

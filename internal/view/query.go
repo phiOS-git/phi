@@ -14,13 +14,23 @@ import (
 // terminal for manual testing of the ranking.
 func QueryResults(results []query.Result, styled bool) string {
 	if !styled {
+		// A nil results (the zero value of "no matches", as opposed to an
+		// empty-but-non-nil slice) marshals to the JSON literal "null", not
+		// "[]" — the shell's Launcher only ever accepts an Array.isArray
+		// payload and otherwise leaves whatever it last rendered on screen
+		// (e.g. a locked "web" tag with the input cleared keeps showing the
+		// previous query's result), so an empty list must still be a JSON
+		// array here regardless of which of the two it started as.
+		if len(results) == 0 {
+			return "[]\n"
+		}
 		data, err := json.Marshal(results)
 		if err != nil {
 			// A Result only ever holds strings, a float64 and a
 			// map[string]string — every one of those always marshals; this
 			// is here so the function still has a defined, sane behaviour
 			// if that ever stops being true, not because it is expected.
-			return "[]"
+			return "[]\n"
 		}
 		return string(data) + "\n"
 	}

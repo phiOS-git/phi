@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"phi/internal/mathx"
 )
 
 // Result is a launcher candidate.
@@ -164,12 +166,100 @@ func Run(ctx context.Context, providers []Provider, q string, frecency *Frecency
 	all := runAndRank(ctx, active, q, frecency)
 
 	if lockedPrefix == "" {
-		if key := detectPrefix(q); key != "" {
+		key := detectPrefix(q)
+		if key != "" {
 			all = boostProviders(all, prefixProviders[key])
+		}
+		// Math and conversion answers go first when the query is clearly
+		// math, or when nothing else in the result set is a real match — a
+		// calculator/currency result otherwise sits at the bottom of the
+		// provider tier order (tierMath/tierCurrency, rank.go) and loses to
+		// a loosely-matching application or command, or stays buried under
+		// the always-present websearch/sitesearch/agent fallbacks. A no-op
+		// when no calculator/currency result exists (boostProviders moves
+		// nothing). Skipped when q named a *different* explicit prefix (e.g.
+		// "web ...", "phi ..."): that boost above already put the right
+		// provider first, and this must not override it just because the
+		// raw text happens to also parse as math — "phi" itself is a known
+		// constant (the golden ratio) to CalculatorProvider, so "phi <verb>"
+		// can otherwise look like an equation.
+		if key == "" || prefixRoutesToMath(key) {
+			if onlyFallbackMatches(all) || looksLikeMath(q) {
+				all = boostProviders(all, []string{"calculator", "currency"})
+			}
 		}
 	}
 
 	return all
+}
+
+// prefixRoutesToMath reports whether the runner-bar prefix keyword key
+// already routes to the calculator/currency providers (prefixProviders'
+// "convert" and "math" entries) — the math boost in Run only applies
+// without an explicit different-prefix keyword, or when that keyword was
+// already headed for math anyway.
+func prefixRoutesToMath(key string) bool {
+	for _, name := range prefixProviders[key] {
+		if name == "calculator" || name == "currency" {
+			return true
+		}
+	}
+	return false
+}
+
+// mathProviderNames are the providers onlyFallbackMatches and Run's math
+// boost treat as "a real math/conversion answer" — kept in sync with the
+// []string{"calculator", "currency"} literal passed to boostProviders in
+// Run.
+var mathProviderNames = map[string]bool{"calculator": true, "currency": true}
+
+// alwaysPresentFallback providers answer almost any two-word query
+// regardless of how well it actually matches — WebSearchProvider,
+// SiteSearchProvider and AskAgentProvider all fire as a fallback of last
+// resort, not because the query meant them.
+var alwaysPresentFallback = map[string]bool{"websearch": true, "sitesearch": true, "agent": true}
+
+// onlyFallbackMatches reports whether every result in all, apart from a
+// calculator/currency one, comes from an always-present fallback provider
+// — i.e. nothing in the set genuinely matched the query, so a
+// calculator/currency result (if any) deserves top billing over fallbacks
+// nobody asked for.
+func onlyFallbackMatches(all []Result) bool {
+	for _, r := range all {
+		if mathProviderNames[r.Provider] {
+			continue
+		}
+		if !alwaysPresentFallback[r.Provider] {
+			return false
+		}
+	}
+	return true
+}
+
+// looksLikeMathChars are the operator/grouping characters that make a
+// query read as arithmetic even without a recognised unit or currency
+// pair, e.g. "2+2" or "10% of 50".
+const looksLikeMathChars = "+-*/^%()=,"
+
+// looksLikeMath reports whether q plausibly asks for math or a
+// unit/currency conversion. Conservative on purpose: "7zip", "2048 game"
+// and "mp3" all contain a digit but mean an application, so a digit alone
+// is never enough — it also needs an arithmetic operator/grouping
+// character, or to actually parse as a conversion via the same parsers
+// CalculatorProvider (mathx.ParseConversion) and CurrencyProvider
+// (parseCurrencyQuery) already trust.
+func looksLikeMath(q string) bool {
+	if !strings.ContainsAny(q, "0123456789") {
+		return false
+	}
+	if strings.ContainsAny(q, looksLikeMathChars) {
+		return true
+	}
+	if _, ok := mathx.ParseConversion(q); ok {
+		return true
+	}
+	_, ok := parseCurrencyQuery(q)
+	return ok
 }
 
 // remainderEmpty reports whether q, once its locked keyword is accounted
