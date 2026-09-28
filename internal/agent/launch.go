@@ -185,7 +185,12 @@ func sessionContext(spec LaunchSpec, folders []ResolvedFolder) string {
 	} else {
 		b.WriteString("- Folders:\n")
 		for _, f := range folders {
-			fmt.Fprintf(&b, "  - %s (%s) at /home/agent/folders/%s/\n", f.Name, f.Mode, f.Name)
+			// phi-agent-contain mounts rw folders read-only outside coding.
+			mode := f.Mode
+			if spec.Profile != Coding {
+				mode = "ro"
+			}
+			fmt.Fprintf(&b, "  - %s (%s) at /home/agent/folders/%s/\n", f.Name, mode, f.Name)
 		}
 	}
 	if spec.Project != "" {
