@@ -126,6 +126,10 @@ func GetSession(id string) (SessionRecord, error) {
 // ListSessions returns every recorded coding session, active first, then most
 // recent. A record whose process is gone but still marked "active" is
 // reconciled to "ended" on read (best-effort — the wrapper normally does this).
+// A record with no TranscriptPath yet (RunCode/RunTUI leave it empty: pi's
+// exact <timestamp>_<id>.jsonl name is not known at launch time) gets one
+// filled in here, lazily, from FindTranscript — never persisted, so this
+// never writes on every list call, only on a successful record end/update.
 func ListSessions() ([]SessionRecord, error) {
 	d, err := terminalDir()
 	if err != nil {
@@ -134,11 +138,12 @@ func ListSessions() ([]SessionRecord, error) {
 	entries, err := os.ReadDir(d)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return []SessionRecord{}, nil
 		}
 		return nil, err
 	}
-	var out []SessionRecord
+	m, merr := OpenModel()
+	out := []SessionRecord{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -153,6 +158,11 @@ func ListSessions() ([]SessionRecord, error) {
 				rec.Ended = time.Now().UTC()
 			}
 			_ = writeSession(rec)
+		}
+		if rec.TranscriptPath == "" && merr == nil {
+			if _, jsonlPath, _, ferr := m.FindTranscript(rec.ID); ferr == nil && jsonlPath != "" {
+				rec.TranscriptPath = jsonlPath
+			}
 		}
 		out = append(out, rec)
 	}

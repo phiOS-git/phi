@@ -40,7 +40,7 @@ type SearchGroup struct {
 func (m *Model) Search(query, project string) (SearchResults, error) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
-		return SearchResults{}, nil
+		return SearchResults{Groups: []SearchGroup{}}, nil
 	}
 
 	var hits []SearchHit
@@ -211,7 +211,7 @@ func group(hits []SearchHit) SearchResults {
 	sort.Slice(order, func(i, j int) bool {
 		return bestScore(byProject[order[i]]) > bestScore(byProject[order[j]])
 	})
-	var res SearchResults
+	res := SearchResults{Groups: []SearchGroup{}}
 	for _, key := range order {
 		g := byProject[key]
 		sort.Slice(g, func(i, j int) bool { return g[i].Score > g[j].Score })

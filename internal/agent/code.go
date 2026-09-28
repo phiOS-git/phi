@@ -1,22 +1,23 @@
 package agent
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 )
 
-// `phi agent code DIR [-- ARGS...]`.
-// Replaces the fixed PHI_AGENT_CODE_ROOT: the chosen DIR is the ONLY working
-// directory mounted read-write for this A2 session. The blocklist
+// `phi agent code DIR [-- PI_ARGS...]`.
+// The chosen DIR is the ONLY working directory mounted read-write for this
+// coding session (§1: profile coding, broker a2). The blocklist
 // (blocklist.go) is a selector guard-rail; the real boundary is
 // phi-agent-contain's from-empty mount namespace.
 //
 // This records a session metadata file (session.go) so the shell panel can
-// list and manage the session without ever reaching A2's server.
+// list and manage the session without ever reaching pi's runtime state, plus
+// a sidecar (chat.go) next to where pi will write its transcript.
 
 // containLauncher is the contained launch path, shipped in phios-dotfiles.
 const containLauncher = "phi-agent-contain"
@@ -24,14 +25,15 @@ const containLauncher = "phi-agent-contain"
 // CodeConfig configures a coding-session launch.
 type CodeConfig struct {
 	Dir        string   // the working directory (validated, mounted rw at /home/agent/work)
-	EngineArgs []string // extra args after `-- ` (e.g. resume flags); empty = opencode default TUI
+	Project    string   // "" = none; must already exist when set
+	ExtraArgs  []string // extra pi args after `-- `
 	WindowAddr string   // Hyprland window address override; auto-detected from the ancestry when empty and not Detach
 	Detach     bool     // panel use: record + spawn, do not replace this process
 }
 
-// RunCode validates DIR, records the session, and hands off to the contained
-// A2 engine. On a normal terminal invocation it execs (replaces the process);
-// with Detach it spawns and returns the session id.
+// RunCode validates DIR, records the session, and hands off to pi under the
+// containment. On a normal terminal invocation it execs (replaces the
+// process); with Detach it spawns and returns the session id.
 func RunCode(cfg CodeConfig) (string, error) {
 	abs, err := ValidateCodeDir(cfg.Dir)
 	if err != nil {
@@ -42,12 +44,25 @@ func RunCode(cfg CodeConfig) (string, error) {
 		return "", err
 	}
 
-	launcher, err := exec.LookPath(containLauncher)
+	m, err := OpenModel()
 	if err != nil {
-		return "", fmt.Errorf("%s not found on PATH (phios-dotfiles, ~/.local/bin)", containLauncher)
+		return "", err
+	}
+	if cfg.Project != "" && !m.HasProject(cfg.Project) {
+		return "", fmt.Errorf("no such project: %q", cfg.Project)
 	}
 
 	id := NewSessionID()
+	sessDir, err := m.SessionsDir(cfg.Project)
+	if err != nil {
+		return "", err
+	}
+	if err := WriteSidecar(sessDir, Sidecar{
+		ID: id, Profile: string(Coding), Project: cfg.Project, Created: time.Now().UTC(),
+	}); err != nil {
+		return "", fmt.Errorf("writing session sidecar: %w", err)
+	}
+
 	windowAddr := cfg.WindowAddr
 	if windowAddr == "" && !cfg.Detach {
 		// A terminal launch: record the terminal window so the panel's
@@ -56,19 +71,30 @@ func RunCode(cfg CodeConfig) (string, error) {
 	}
 	rec := SessionRecord{
 		ID:         id,
+		Profile:    string(Coding),
+		Project:    cfg.Project,
 		Dir:        abs,
 		PID:        os.Getpid(),
 		WindowAddr: windowAddr,
+		// TranscriptPath is left empty: pi has not written its .jsonl yet,
+		// and its exact name is not known until it does. ListSessions fills
+		// it in lazily once the file appears (session.go).
 	}
 	if err := RecordSessionStart(rec); err != nil {
 		return "", fmt.Errorf("recording session: %w", err)
 	}
 
-	argv := []string{launcher, "a2", "--workdir", abs, "--"}
-	if len(cfg.EngineArgs) > 0 {
-		argv = append(argv, cfg.EngineArgs...)
-	} else {
-		argv = append(argv, "opencode")
+	argv, err := BuildLaunch(LaunchSpec{
+		Profile:   Coding,
+		Project:   cfg.Project,
+		Workdir:   abs,
+		SessionID: id,
+		Mode:      ModeTUI,
+		ExtraArgs: cfg.ExtraArgs,
+	})
+	if err != nil {
+		_ = RecordSessionEnd(id, "build launch: "+err.Error())
+		return "", err
 	}
 
 	if cfg.Detach {
@@ -95,7 +121,7 @@ func RunCode(cfg CodeConfig) (string, error) {
 	// it, or ListSessions notices the pid is gone. Best-effort end-marking via
 	// a fork is not worth a second process here.
 	env := append(os.Environ(), "PHI_AGENT_SESSION_ID="+id)
-	if err := syscall.Exec(launcher, argv, env); err != nil {
+	if err := syscall.Exec(argv[0], argv, env); err != nil {
 		_ = RecordSessionEnd(id, "exec failed: "+err.Error())
 		return "", err
 	}
@@ -120,11 +146,9 @@ func ReconcileActiveSessions() error {
 	return firstErr
 }
 
-var errNoWorkdir = errors.New("phi agent code: needs a directory")
-
-// a2SupportUnits are the systemd user services A2's containment needs
+// a2SupportUnits are the systemd user services the coding containment needs
 // already running before it starts: phi-agent-contain bind-mounts the net/
-// bridge dir as-is and never waits for it, so an A2 launch with any
+// bridge dir as-is and never waits for it, so a coding launch with any
 // of these down does not fail closed at the mount — it starts, then fails
 // deep inside the container with a bare `socat: No such file or directory`
 // connecting to proxy.sock, which reads as a broken feature rather than

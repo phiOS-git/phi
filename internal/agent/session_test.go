@@ -7,6 +7,10 @@ import (
 
 func TestSessionStore(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// ListSessions now looks up transcripts lazily via a Model (session.go),
+	// so it needs a sandboxed data root too — otherwise it would touch the
+	// real ~/.local/share/phi-agent on a machine with no XDG_DATA_HOME set.
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
 	id := NewSessionID()
 	if err := RecordSessionStart(SessionRecord{ID: id, Profile: "coding", Dir: "/home/x/proj", PID: os.Getpid()}); err != nil {

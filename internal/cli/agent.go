@@ -46,12 +46,17 @@ Verbs:
   session           terminal TUI sessions (phi agent code/tui), from
                     phi-owned metadata:
                     list [--json] | show ID
-  code DIR [-- ARGS...]
-                    open the coding profile in DIR (the only rw mount for
-                    the session), guarded by the blocklist. Records session
-                    metadata.
-  ask [--personality NAME] PROMPT
-                    one inline question to the running A1 service.
+  code [DIR] [--project NAME] [--detach] [--window-addr ADDR] [-- PI_ARGS...]
+                    open the coding profile in DIR (default: the current
+                    directory; the only rw mount for the session), guarded
+                    by the blocklist. Records session metadata.
+  tui [--profile general|academic] [--project NAME] [--resume ID]
+                    the chat profiles' interactive pi session, in this
+                    terminal.
+  ask [--profile general|academic] [--project NAME] QUESTION...
+                    one print-mode question through pi. No session kept.
+  inline            stdin {"instruction","text","filetype"} -> stdout: the
+                    replacement text, and nothing else. For editor use.
 
 phi never assumes pi's on-disk format beyond the documented session JSONL it
 reads for transcripts; it never queries pi's runtime state directly.
@@ -79,8 +84,12 @@ func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
 		return runAgentSession(args[1:], stdout, stderr, styled)
 	case "code":
 		return runAgentCode(args[1:], stdout, stderr)
+	case "tui":
+		return runAgentTUI(args[1:], stdout, stderr)
 	case "ask":
 		return runAgentAsk(args[1:], stdout, stderr)
+	case "inline":
+		return runAgentInline(args[1:], stdout, stderr)
 	case "-h", "--help":
 		fmt.Fprint(stdout, agentUsage)
 		return 0
@@ -140,16 +149,23 @@ func runAgentBroker(args []string, stdout, stderr io.Writer) int {
 }
 
 func runAgentAsk(args []string, stdout, stderr io.Writer) int {
-	var personality string
+	profileName, project := "general", ""
 	var promptParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--personality", "--agent":
+		case "--profile":
 			if i+1 >= len(args) {
-				fmt.Fprintf(stderr, "%s: agent ask: %s needs a name\n", progName, args[i])
+				fmt.Fprintf(stderr, "%s: agent ask: --profile needs a name\n", progName)
 				return 1
 			}
-			personality = args[i+1]
+			profileName = args[i+1]
+			i++
+		case "--project":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s: agent ask: --project needs a name\n", progName)
+				return 1
+			}
+			project = args[i+1]
 			i++
 		case "-h", "--help":
 			fmt.Fprint(stdout, agentUsage)
@@ -158,14 +174,23 @@ func runAgentAsk(args []string, stdout, stderr io.Writer) int {
 			promptParts = append(promptParts, args[i])
 		}
 	}
-	prompt := strings.TrimSpace(strings.Join(promptParts, " "))
-	if prompt == "" {
-		fmt.Fprintf(stderr, "%s: agent ask: needs a prompt\n", progName)
+	profile, err := agent.ParseProfile(profileName)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent ask: %v\n", progName, err)
+		return 1
+	}
+	if profile != agent.General && profile != agent.Academic {
+		fmt.Fprintf(stderr, "%s: agent ask: profile %q not supported (want general or academic)\n", progName, profile)
+		return 1
+	}
+	question := strings.TrimSpace(strings.Join(promptParts, " "))
+	if question == "" {
+		fmt.Fprintf(stderr, "%s: agent ask: needs a question\n", progName)
 		return 1
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := agent.Ask(ctx, agent.AskConfig{Personality: personality}, prompt, stdout); err != nil {
+	if err := agent.Ask(ctx, agent.AskConfig{Profile: profile, Project: project}, question, stdout); err != nil {
 		fmt.Fprintf(stderr, "%s: agent ask: %v\n", progName, err)
 		return 1
 	}
@@ -173,15 +198,18 @@ func runAgentAsk(args []string, stdout, stderr io.Writer) int {
 }
 
 func runAgentCode(args []string, stdout, stderr io.Writer) int {
-	var dir string
-	var engineArgs []string
+	var dir, project string
+	var extraArgs []string
 	windowAddr := os.Getenv("PHI_AGENT_WINDOW_ADDR")
 	detach := false
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--":
-			engineArgs = args[i+1:]
+			extraArgs = args[i+1:]
 			i = len(args)
+		case args[i] == "--project" && i+1 < len(args):
+			project = args[i+1]
+			i++
 		case args[i] == "--detach":
 			detach = true
 		case args[i] == "--window-addr" && i+1 < len(args):
@@ -195,11 +223,10 @@ func runAgentCode(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if dir == "" {
-		fmt.Fprintf(stderr, "%s: agent code: needs a directory\n", progName)
-		return 1
+		dir = "."
 	}
 	id, err := agent.RunCode(agent.CodeConfig{
-		Dir: dir, EngineArgs: engineArgs, WindowAddr: windowAddr, Detach: detach,
+		Dir: dir, Project: project, ExtraArgs: extraArgs, WindowAddr: windowAddr, Detach: detach,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: agent code: %v\n", progName, err)
@@ -207,6 +234,62 @@ func runAgentCode(args []string, stdout, stderr io.Writer) int {
 	}
 	if detach {
 		fmt.Fprintln(stdout, id)
+	}
+	return 0
+}
+
+func runAgentTUI(args []string, stdout, stderr io.Writer) int {
+	profileName, project, resumeID := "general", "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--profile":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s: agent tui: --profile needs a name\n", progName)
+				return 1
+			}
+			profileName = args[i+1]
+			i++
+		case "--project":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s: agent tui: --project needs a name\n", progName)
+				return 1
+			}
+			project = args[i+1]
+			i++
+		case "--resume":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s: agent tui: --resume needs an id\n", progName)
+				return 1
+			}
+			resumeID = args[i+1]
+			i++
+		case "-h", "--help":
+			fmt.Fprint(stdout, agentUsage)
+			return 0
+		default:
+			fmt.Fprintf(stderr, "%s: agent tui: unexpected argument %q\n", progName, args[i])
+			return 1
+		}
+	}
+	profile, err := agent.ParseProfile(profileName)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent tui: %v\n", progName, err)
+		return 1
+	}
+	if err := agent.RunTUI(profile, project, resumeID); err != nil {
+		fmt.Fprintf(stderr, "%s: agent tui: %v\n", progName, err)
+		return 1
+	}
+	return 0
+}
+
+func runAgentInline(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		fmt.Fprintf(stderr, "%s: agent inline: takes no arguments\n", progName)
+		return 1
+	}
+	if err := agent.RunInline(os.Stdin, stdout, stderr); err != nil {
+		return 1
 	}
 	return 0
 }

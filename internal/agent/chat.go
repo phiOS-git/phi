@@ -269,7 +269,7 @@ func (m *Model) ListTranscripts(project string, unfiledOnly bool) ([]TranscriptM
 		}
 	}
 
-	var out []TranscriptMeta
+	out := []TranscriptMeta{}
 	for _, tg := range targets {
 		ids, err := sessionIDsInDir(tg.dir)
 		if err != nil {
@@ -316,11 +316,14 @@ func (m *Model) LoadTranscript(id string) (TranscriptMeta, []Message, error) {
 	if err != nil {
 		return TranscriptMeta{}, nil, err
 	}
-	var messages []Message
+	messages := []Message{}
 	if jsonlPath != "" {
 		messages, err = TranscriptMessages(jsonlPath)
 		if err != nil {
 			return TranscriptMeta{}, nil, err
+		}
+		if messages == nil {
+			messages = []Message{}
 		}
 	}
 	meta := TranscriptMeta{
