@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -69,6 +68,7 @@ type liveSession struct {
 	mu           sync.Mutex
 	busy         bool
 	lastActivity time.Time
+	turn         liveTurnState
 }
 
 func (ls *liveSession) touch() {
@@ -121,12 +121,50 @@ type Server struct {
 	sessions map[string]*liveSession
 
 	hub *sseHub
+
+	// DialogTimeout bounds how long a pi dialog waits for the panel when
+	// the request carries no timeout of its own (plan §5.3). Zero means
+	// defaultDialogTimeout.
+	DialogTimeout time.Duration
+
+	logs      *logRing
+	startedAt time.Time
+
+	// onSettled, when set, runs after a session's agent_settled (in its own
+	// goroutine): the scheduler records the run's outcome through it.
+	onSettled func(ls *liveSession, failed bool)
+
+	// onStats, when set, receives each session.stats computation.
+	onStats func(ls *liveSession, st Stats)
+
+	// ReadPrefs makes the server read `phi agent prefs` (defaults for new
+	// sessions, idle close, dialog timeout, the scheduler). Off in tests.
+	ReadPrefs bool
+
+	sched *Scheduler
+
+	modelsMu    sync.Mutex
+	modelsCache map[Profile]modelsCacheEntry
 }
+
+const defaultDialogTimeout = 10 * time.Minute
+
+func (s *Server) dialogTimeout() time.Duration {
+	if s.DialogTimeout > 0 {
+		return s.DialogTimeout
+	}
+	if s.ReadPrefs {
+		return time.Duration(s.prefs().DialogTimeoutSeconds) * time.Second
+	}
+	return defaultDialogTimeout
+}
+
+func buildVersion() string { return build.Version }
 
 // NewServer returns a Server ready to have its fields tuned (if needed) and
 // then Serve or Handler called.
 func NewServer(m *Model) *Server {
-	return &Server{
+	s := &Server{
 		Model:        m,
 		Launch:       BuildLaunch,
 		IdleTimeout:  defaultIdleTimeout,
@@ -134,10 +172,18 @@ func NewServer(m *Model) *Server {
 		Stderr:       os.Stderr,
 		sessions:     make(map[string]*liveSession),
 		hub:          newSSEHub(),
+		logs:         newLogRing(2000),
+		startedAt:    time.Now().UTC(),
+		modelsCache:  make(map[Profile]modelsCacheEntry),
 	}
+	s.initScheduler()
+	return s
 }
 
 func (s *Server) idleTimeout() time.Duration {
+	if s.ReadPrefs {
+		return time.Duration(s.prefs().IdleMinutes) * time.Minute
+	}
 	if s.IdleTimeout > 0 {
 		return s.IdleTimeout
 	}
@@ -176,17 +222,17 @@ func (s *Server) removeSession(id string) {
 // spawnSession launches a pi RPC child for a session, registers it, and
 // wires its events into the SSE hub. Exactly one of sessionID (a brand new
 // session) or resumeFile (a host .jsonl to resume, §6) is set.
-func (s *Server) spawnSession(id string, profile Profile, project, sessionID, resumeFile string) (*liveSession, error) {
-	spec := LaunchSpec{Profile: profile, Project: project, Mode: ModeRPC, SessionID: sessionID, ResumeFile: resumeFile}
+func (s *Server) spawnSession(id string, profile Profile, project, sessionID, resumeFile string, extra []string) (*liveSession, error) {
+	spec := LaunchSpec{Profile: profile, Project: project, Mode: ModeRPC, SessionID: sessionID, ResumeFile: resumeFile, ExtraArgs: extra}
 	argv, err := s.Launch(spec)
 	if err != nil {
 		return nil, err
 	}
 
-	ls := &liveSession{id: id, profile: profile, project: project, lastActivity: time.Now()}
+	ls := &liveSession{id: id, profile: profile, project: project, lastActivity: time.Now(), turn: newLiveTurnState()}
 
 	stderrSink := func(line string) {
-		fmt.Fprintf(s.Stderr, "[%s] %s\n", id, line)
+		s.logf(piStderrLevel(line), id, "pi", "%s", line)
 	}
 	proc, err := startPiProc(argv, stderrSink, s.piEventHandler(ls), s.piExitHandler(ls))
 	if err != nil {
@@ -194,6 +240,7 @@ func (s *Server) spawnSession(id string, profile Profile, project, sessionID, re
 	}
 	ls.proc = proc
 	s.putSession(ls)
+	s.logf("info", id, "serve", "started %s session (project %q)", profile, project)
 	return ls, nil
 }
 
@@ -213,80 +260,13 @@ func (s *Server) piExitHandler(ls *liveSession) func(error) {
 		default:
 			code = -1
 		}
+		s.cancelDialogs(ls)
 		s.hub.publish(sseEvent{"type": "session.exited", "session": ls.id, "code": code})
-	}
-}
-
-// piEventHandler maps one pi stdout record (json.md, rpc-extension-ui.md)
-// onto §8's SSE events.
-func (s *Server) piEventHandler(ls *liveSession) EventFunc {
-	return func(kind string, raw json.RawMessage) {
-		ls.touch()
-		switch kind {
-		case "agent_start":
-			ls.setBusy(true)
-			s.hub.publish(sseEvent{"type": "session.busy", "session": ls.id})
-
-		case "message_update":
-			var ev struct {
-				AssistantMessageEvent struct {
-					Type  string `json:"type"`
-					Delta string `json:"delta"`
-				} `json:"assistantMessageEvent"`
-			}
-			if err := json.Unmarshal(raw, &ev); err == nil && ev.AssistantMessageEvent.Type == "text_delta" {
-				s.hub.publish(sseEvent{"type": "message.delta", "session": ls.id, "text": ev.AssistantMessageEvent.Delta})
-			}
-
-		case "message_end":
-			var ev struct {
-				Message struct {
-					Role         string `json:"role"`
-					StopReason   string `json:"stopReason"`
-					ErrorMessage string `json:"errorMessage"`
-				} `json:"message"`
-			}
-			if err := json.Unmarshal(raw, &ev); err != nil || ev.Message.Role != "assistant" {
-				return
-			}
-			s.hub.publish(sseEvent{"type": "message.done", "session": ls.id})
-			if ev.Message.StopReason == "error" {
-				errText := ev.Message.ErrorMessage
-				if errText == "" {
-					errText = "error"
-				}
-				s.hub.publish(sseEvent{"type": "session.error", "session": ls.id, "error": errText})
-			}
-
-		case "agent_settled":
-			ls.setBusy(false)
-			s.hub.publish(sseEvent{"type": "session.idle", "session": ls.id})
-
-		case "extension_ui_request":
-			s.replyExtensionUI(ls, raw)
+		level := "info"
+		if code != 0 {
+			level = "warn"
 		}
-	}
-}
-
-// replyExtensionUI answers every dialog method (select, confirm, input,
-// editor) with a cancelled response, and ignores fire-and-forget methods
-// (notify, setStatus, setWidget, setTitle, set_editor_text) — §8's task,
-// rpc-extension-ui.md's request/response shapes.
-func (s *Server) replyExtensionUI(ls *liveSession, raw json.RawMessage) {
-	var req struct {
-		ID     string `json:"id"`
-		Method string `json:"method"`
-	}
-	if err := json.Unmarshal(raw, &req); err != nil || req.ID == "" {
-		return
-	}
-	switch req.Method {
-	case "select", "confirm", "input", "editor":
-		_ = ls.proc.sendRaw(map[string]any{
-			"type":      "extension_ui_response",
-			"id":        req.ID,
-			"cancelled": true,
-		})
+		s.logf(level, ls.id, "serve", "session process exited (code %d)", code)
 	}
 }
 
@@ -298,6 +278,7 @@ func (s *Server) sendCommand(ls *liveSession, cmd map[string]any) (piResponse, e
 	resp, err := ls.proc.send(cmd, 0)
 	if err != nil {
 		s.hub.publish(sseEvent{"type": "session.error", "session": ls.id, "error": err.Error()})
+		s.logf("error", ls.id, "serve", "%s: %v", cmd["type"], err)
 		return resp, err
 	}
 	if !resp.Success {
@@ -306,6 +287,7 @@ func (s *Server) sendCommand(ls *liveSession, cmd map[string]any) (piResponse, e
 			errText = "command failed"
 		}
 		s.hub.publish(sseEvent{"type": "session.error", "session": ls.id, "error": errText})
+		s.logf("error", ls.id, "serve", "%s: %s", cmd["type"], errText)
 		return resp, errors.New(errText)
 	}
 	return resp, nil
@@ -381,6 +363,11 @@ func (s *Server) Serve(ctx context.Context, listeners ...Listener) error {
 
 	stopReaper := s.startReaper()
 	defer stopReaper()
+	stopScheduler := s.startScheduler()
+	defer stopScheduler()
+	stopWatcher := s.startCodingWatcher()
+	defer stopWatcher()
+	s.logf("info", "", "serve", "listening (api %d, phi %s)", APILevel, build.Version)
 
 	errc := make(chan error, len(lns))
 	for _, ln := range lns {
@@ -438,6 +425,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /sessions/{id}/title", s.handleTitle)
 	mux.HandleFunc("POST /sessions/{id}/pin", s.handlePin)
 	mux.HandleFunc("DELETE /sessions/{id}", s.handleDeleteSession)
+	mux.HandleFunc("GET /sessions/{id}/timeline", s.handleTimeline)
+	mux.HandleFunc("GET /sessions/{id}/state", s.handleState)
+	mux.HandleFunc("GET /sessions/{id}/commands", s.handleCommands)
+	mux.HandleFunc("GET /sessions/{id}/export", s.handleExport)
+	mux.HandleFunc("POST /sessions/{id}/queue/clear", s.handleQueueClear)
+	mux.HandleFunc("POST /sessions/{id}/model", s.handleSetModel)
+	mux.HandleFunc("POST /sessions/{id}/thinking", s.handleSetThinking)
+	mux.HandleFunc("POST /sessions/{id}/compact", s.handleCompact)
+	mux.HandleFunc("POST /sessions/{id}/dialog/{dialog}", s.handleDialog)
+	mux.HandleFunc("GET /models", s.handleModels)
+	mux.HandleFunc("GET /logs", s.handleLogs)
+	s.extendRoutes(mux)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	return mux
 }
@@ -453,7 +452,7 @@ func writeJSONError(w http.ResponseWriter, status int, err error) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": build.Version})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": build.Version, "api": APILevel, "startedAt": s.startedAt})
 }
 
 func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
@@ -462,91 +461,6 @@ func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {
 		out = append(out, string(p))
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// sessionOut is one GET /sessions row (§8): TranscriptMeta plus live/busy,
-// without its Path (host-internal, never in the API).
-type sessionOut struct {
-	ID      string    `json:"id"`
-	Title   string    `json:"title"`
-	Profile string    `json:"profile"`
-	Project string    `json:"project"`
-	Pinned  bool      `json:"pinned"`
-	Updated time.Time `json:"updated"`
-	Live    bool      `json:"live"`
-	Busy    bool      `json:"busy"`
-}
-
-func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	project := r.URL.Query().Get("project")
-	unfiled := r.URL.Query().Get("unfiled") == "1"
-
-	// ListTranscripts already unions *.phi.json and *.jsonl (sessionIDsInDir,
-	// chat.go), so a session whose sidecar was written but whose pi child
-	// has not written a transcript yet (a session just created by POST
-	// /sessions, before its first prompt) is already included here.
-	metas, err := s.Model.ListTranscripts(project, unfiled)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	out := []sessionOut{}
-	for _, m := range metas {
-		profile, perr := ParseProfile(m.Profile)
-		if perr != nil || !isChatProfile(profile) {
-			continue // coding/inline sessions have no panel chat (§1, §8)
-		}
-		ls := s.liveSession(m.ID)
-		out = append(out, sessionOut{
-			ID: m.ID, Title: m.Title, Profile: m.Profile, Project: m.Project,
-			Pinned: m.Pinned, Updated: m.Updated,
-			Live: ls != nil, Busy: ls != nil && ls.isBusy(),
-		})
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Profile string `json:"profile"`
-		Project string `json:"project"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		writeJSONError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	profile, err := ParseProfile(body.Profile)
-	if err != nil || !isChatProfile(profile) {
-		writeJSONError(w, http.StatusBadRequest, fmt.Errorf("profile must be one of %v", ChatProfiles()))
-		return
-	}
-	if body.Project != "" && !s.Model.HasProject(body.Project) {
-		writeJSONError(w, http.StatusBadRequest, fmt.Errorf("no such project: %q", body.Project))
-		return
-	}
-
-	dir, err := s.Model.SessionsDir(body.Project)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err)
-		return
-	}
-	id := NewSessionID()
-	if err := WriteSidecar(dir, Sidecar{
-		ID: id, Profile: string(profile), Project: body.Project, Created: time.Now().UTC(),
-	}); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	if _, err := s.spawnSession(id, profile, body.Project, id, ""); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	s.hub.publish(sseEvent{"type": "session.created", "session": id, "profile": string(profile), "project": body.Project})
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
@@ -589,71 +503,6 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, msgs)
 }
 
-func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var body struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, err)
-		return
-	}
-	if strings.TrimSpace(body.Text) == "" {
-		writeJSONError(w, http.StatusBadRequest, errors.New("text is required"))
-		return
-	}
-
-	ls := s.liveSession(id)
-	if ls == nil {
-		dir, jsonlPath, meta, err := s.Model.FindTranscript(id)
-		if err != nil {
-			writeJSONError(w, http.StatusNotFound, err)
-			return
-		}
-		profile, perr := ParseProfile(meta.Profile)
-		if perr != nil || !isChatProfile(profile) {
-			writeJSONError(w, http.StatusBadRequest, fmt.Errorf("session %q is not a chat profile", id))
-			return
-		}
-		project := s.Model.projectForSessionsDir(dir)
-		sessionID, resumeFile := "", ""
-		if jsonlPath != "" {
-			resumeFile = jsonlPath
-		} else {
-			sessionID = id
-		}
-		ls, err = s.spawnSession(id, profile, project, sessionID, resumeFile)
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err)
-			return
-		}
-	}
-
-	cmd := map[string]any{"type": "prompt", "message": body.Text}
-	if ls.isBusy() {
-		cmd["streamingBehavior"] = "followUp"
-	}
-	if _, err := s.sendCommand(ls, cmd); err != nil {
-		writeJSONError(w, http.StatusBadGateway, err)
-		return
-	}
-	writeJSON(w, http.StatusAccepted, map[string]any{})
-}
-
-func (s *Server) handleAbort(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	ls := s.liveSession(id)
-	if ls == nil {
-		writeJSONError(w, http.StatusNotFound, fmt.Errorf("session %q is not live", id))
-		return
-	}
-	if _, err := s.sendCommand(ls, map[string]any{"type": "abort"}); err != nil {
-		writeJSONError(w, http.StatusBadGateway, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{})
-}
-
 func (s *Server) handleTitle(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var body struct {
@@ -693,14 +542,6 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
-func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if ls := s.liveSession(id); ls != nil {
-		s.closeSession(ls)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{})
-}
-
 // --- SSE ---------------------------------------------------------------
 
 // sseEvent is one §8 SSE payload; a plain map keeps every event's field set
@@ -721,7 +562,7 @@ func newSSEHub() *sseHub {
 }
 
 func (h *sseHub) subscribe() chan []byte {
-	ch := make(chan []byte, 32)
+	ch := make(chan []byte, 1024)
 	h.mu.Lock()
 	h.clients[ch] = struct{}{}
 	h.mu.Unlock()

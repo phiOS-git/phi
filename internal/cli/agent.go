@@ -60,9 +60,24 @@ Verbs:
   serve [--listen 127.0.0.1:4199]
                     the chat profiles' HTTP+SSE API (binding contract §8):
                     one pi --mode rpc child per live session. Loopback only.
+  status            units, keys present, providers per profile, brokers.
+  prefs             get [KEY] | set KEY VALUE — engine defaults for new
+                    sessions, idle close, dialog timeout, the scheduler.
+  usage [--days N]  tokens and cost by day, profile, model and project.
+  schedule          list | add --json-body JSON | set ID --json-body JSON
+                    | rm ID | run ID — scheduled prompts.
+  attachment        list NAME | add NAME PATH | remove NAME FILE — a
+                    project's attachments.
+  memory-read --level system|profile|project [--profile P] [--project N]
+                    the memory text of one level.
+  broker-requests [--instance a1|a2] [--limit N]
+                    the latest metered broker requests.
+  session-prune [--older-than DAYS]
+                    delete ended terminal-session records (never transcripts).
 
 phi never assumes pi's on-disk format beyond the documented session JSONL it
-reads for transcripts; it never queries pi's runtime state directly.
+reads for transcripts; a live session's state comes only through pi's RPC
+protocol.
 `
 
 func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
@@ -95,6 +110,22 @@ func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
 		return runAgentInline(args[1:], stdout, stderr)
 	case "serve":
 		return runAgentServe(args[1:], stdout, stderr)
+	case "status":
+		return runAgentStatus(args[1:], stdout, stderr, styled)
+	case "prefs":
+		return runAgentPrefs(args[1:], stdout, stderr, styled)
+	case "usage":
+		return runAgentUsage(args[1:], stdout, stderr, styled)
+	case "schedule":
+		return runAgentSchedule(args[1:], stdout, stderr)
+	case "attachment":
+		return runAgentAttachment(args[1:], stdout, stderr, styled)
+	case "memory-read":
+		return runAgentMemoryRead(args[1:], stdout, stderr, styled)
+	case "broker-requests":
+		return runAgentBrokerRequests(args[1:], stdout, stderr, styled)
+	case "session-prune":
+		return runAgentSessionPrune(args[1:], stdout, stderr, styled)
 	case "-h", "--help":
 		fmt.Fprint(stdout, agentUsage)
 		return 0
@@ -952,6 +983,7 @@ func runAgentServe(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	srv := agent.NewServer(m)
+	srv.ReadPrefs = true
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
