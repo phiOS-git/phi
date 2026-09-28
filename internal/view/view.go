@@ -36,7 +36,7 @@ var Commands = []Command{
 	{"pkg", "list/audit packages by category and declared external software"},
 	{"fan", "PWM fan control (status, list, set) — needs a real hwmon channel"},
 	{"update", "snapshot, pacman -Syu, regenerate themed configs (interactive)"},
-	{"agent", "AI agent subsystem (engine: pi): broker, project, memory, chat, search, session, code, tui, ask, inline"},
+	{"agent", "AI agent subsystem (engine: pi): broker, project, memory, chat, search, session, code, tui, ask, inline, serve"},
 }
 
 // Version renders the --version output. It is identical whether or not

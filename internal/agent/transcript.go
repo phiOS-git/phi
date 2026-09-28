@@ -68,26 +68,54 @@ func parseTranscript(r io.Reader) (messages []Message, sessionName string, err e
 				sessionName = e.Name
 			}
 		case "message":
-			var pm piMessage
-			if jerr := json.Unmarshal(e.Message, &pm); jerr != nil {
-				continue
-			}
-			switch pm.Role {
-			case "user":
-				messages = append(messages, Message{Role: "user", Text: extractText(pm.Content)})
-			case "assistant":
-				msg := Message{Role: "assistant", Text: extractText(pm.Content)}
-				if pm.StopReason == "error" {
-					msg.Error = pm.ErrorMessage
-					if msg.Error == "" {
-						msg.Error = "error"
-					}
-				}
+			if msg, ok := messageFromPi(e.Message); ok {
 				messages = append(messages, msg)
 			}
 		}
 	}
 	return messages, sessionName, sc.Err()
+}
+
+// messageFromPi converts one pi AgentMessage-shaped JSON value (the "message"
+// field of a session-file entry, or one element of get_messages's RPC
+// response) into a Message. ok is false for every role but "user" and
+// "assistant" (system, toolResult, bashExecution, custom, branchSummary,
+// compactionSummary), or if raw does not parse.
+func messageFromPi(raw json.RawMessage) (msg Message, ok bool) {
+	var pm piMessage
+	if err := json.Unmarshal(raw, &pm); err != nil {
+		return Message{}, false
+	}
+	switch pm.Role {
+	case "user":
+		return Message{Role: "user", Text: extractText(pm.Content)}, true
+	case "assistant":
+		msg := Message{Role: "assistant", Text: extractText(pm.Content)}
+		if pm.StopReason == "error" {
+			msg.Error = pm.ErrorMessage
+			if msg.Error == "" {
+				msg.Error = "error"
+			}
+		}
+		return msg, true
+	default:
+		return Message{}, false
+	}
+}
+
+// NormalizeAgentMessages converts a live pi session's get_messages response
+// (data.messages, a []AgentMessage per rpc-commands.md) into phi's
+// simplified Message shape, applying the exact same role/content rules
+// parseTranscript uses for the on-disk JSONL (message-types.md documents
+// both as the same AgentMessage union). Always non-nil.
+func NormalizeAgentMessages(raws []json.RawMessage) []Message {
+	out := []Message{}
+	for _, raw := range raws {
+		if msg, ok := messageFromPi(raw); ok {
+			out = append(out, msg)
+		}
+	}
+	return out
 }
 
 // extractText concatenates the text of every "text" content block. content

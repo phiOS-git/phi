@@ -57,6 +57,9 @@ Verbs:
                     one print-mode question through pi. No session kept.
   inline            stdin {"instruction","text","filetype"} -> stdout: the
                     replacement text, and nothing else. For editor use.
+  serve [--listen 127.0.0.1:4199]
+                    the chat profiles' HTTP+SSE API (binding contract §8):
+                    one pi --mode rpc child per live session. Loopback only.
 
 phi never assumes pi's on-disk format beyond the documented session JSONL it
 reads for transcripts; it never queries pi's runtime state directly.
@@ -90,6 +93,8 @@ func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
 		return runAgentAsk(args[1:], stdout, stderr)
 	case "inline":
 		return runAgentInline(args[1:], stdout, stderr)
+	case "serve":
+		return runAgentServe(args[1:], stdout, stderr)
 	case "-h", "--help":
 		fmt.Fprint(stdout, agentUsage)
 		return 0
@@ -916,4 +921,45 @@ func runAgentSession(args []string, stdout, stderr io.Writer, styled bool) int {
 		fmt.Fprintf(stderr, "%s: agent session: unknown subcommand %q\n", progName, sub)
 		return 1
 	}
+}
+
+// runAgentServe runs `phi agent serve` (binding contract §8): the loopback
+// HTTP+SSE API, one pi --mode rpc child per live session. It blocks until
+// SIGINT/SIGTERM, closing every live session before returning.
+func runAgentServe(args []string, stdout, stderr io.Writer) int {
+	addr := "127.0.0.1:4199"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--listen":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "%s: agent serve: --listen needs an address\n", progName)
+				return 1
+			}
+			addr = args[i+1]
+			i++
+		case "-h", "--help":
+			fmt.Fprint(stdout, agentUsage)
+			return 0
+		default:
+			fmt.Fprintf(stderr, "%s: agent serve: unexpected argument %q\n", progName, args[i])
+			return 1
+		}
+	}
+
+	m, err := agent.OpenModel()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent serve: %v\n", progName, err)
+		return 1
+	}
+	srv := agent.NewServer(m)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	fmt.Fprintf(stderr, "%s: agent serve: listening on %s\n", progName, addr)
+	if err := srv.Serve(ctx, agent.LoopbackListener{Addr: addr}); err != nil {
+		fmt.Fprintf(stderr, "%s: agent serve: %v\n", progName, err)
+		return 1
+	}
+	return 0
 }

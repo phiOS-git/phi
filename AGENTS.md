@@ -37,7 +37,7 @@ and is not repeated here.
 | `wallpaper` | `texture MODE` — a deterministic procedural PNG tile for the shell's background layer. |
 | `query` | The launcher backend: ranks applications, windows, calculator, unit and currency conversion, zoxide jumps, SSH hosts, commands, web search, files and system actions. `internal/mathx` does arithmetic, units, equations, calculus and plots. |
 | `update` | Snapshot, `pacman -Syu`, then regenerate every themed config. Interactive. |
-| `agent` | The AI-agent subsystem (engine: pi): `broker`, `init`, `project`, `memory`, `chat`, `search`, `session`, `code`, `tui`, `ask`, `inline`. |
+| `agent` | The AI-agent subsystem (engine: pi): `broker`, `init`, `project`, `memory`, `chat`, `search`, `session`, `code`, `tui`, `ask`, `inline`, `serve`. |
 | `fan` | `status` / `list` / `set PROFILE` — PWM fan control over the Linux hwmon ABI. Most laptops expose no PWM channel; `status` says so plainly. |
 
 ## Constraints that stay
