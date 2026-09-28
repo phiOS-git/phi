@@ -2,31 +2,57 @@ package view
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"phi/internal/agent"
 )
 
 // AgentProjectList renders `phi agent project list`.
-func AgentProjectList(projects []string, active string, personalities []string) string {
+func AgentProjectList(projects []agent.ProjectSummary) string {
 	var b strings.Builder
-	b.WriteString("personalities: ")
-	if len(personalities) == 0 {
-		b.WriteString("(none)\n")
-	} else {
-		b.WriteString(strings.Join(personalities, ", ") + "\n")
-	}
-	b.WriteString("projects:\n")
 	if len(projects) == 0 {
-		b.WriteString("  (none — create one with `phi agent project new NAME`)\n")
+		b.WriteString("no projects — create one with `phi agent project new NAME`\n")
 		return b.String()
 	}
 	for _, p := range projects {
-		mark := "  "
-		if p == active {
-			mark = "* "
+		fmt.Fprintf(&b, "%-20s %s\n", p.Name, p.Title)
+		if p.Description != "" {
+			fmt.Fprintf(&b, "%-20s %s\n", "", p.Description)
 		}
-		fmt.Fprintf(&b, "%s%s\n", mark, p)
+		fmt.Fprintf(&b, "%-20s default profile: %s\n", "", p.DefaultProfile)
+	}
+	return b.String()
+}
+
+// AgentProjectShow renders `phi agent project show NAME`.
+func AgentProjectShow(name string, meta agent.ProjectMeta, dir, host string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s — %s\n", name, meta.Title)
+	fmt.Fprintf(&b, "dir: %s\n", dir)
+	if meta.Description != "" {
+		fmt.Fprintf(&b, "description: %s\n", meta.Description)
+	}
+	fmt.Fprintf(&b, "default profile: %s\n", meta.DefaultProfile)
+	if len(meta.Instructions) == 0 {
+		b.WriteString("instructions: (none)\n")
+	} else {
+		b.WriteString("instructions:\n")
+		for _, ins := range meta.Instructions {
+			fmt.Fprintf(&b, "  - %s\n", ins)
+		}
+	}
+	if len(meta.Folders) == 0 {
+		b.WriteString("folders: (none)\n")
+	} else {
+		b.WriteString("folders:\n")
+		for _, f := range meta.Folders {
+			here := f.Paths[host]
+			if here == "" {
+				here = "(not mounted on this host)"
+			}
+			fmt.Fprintf(&b, "  %s (%s): %s\n", f.Name, f.Mode, here)
+		}
 	}
 	return b.String()
 }
@@ -36,7 +62,7 @@ func AgentProjectList(projects []string, active string, personalities []string) 
 // bare proposal name per line and nothing else, so a name containing a space
 // or a colon still reaches the reader intact. A proposal that exists on disk
 // but never surfaces would be a silent failure.
-func AgentMemoryList(project string, proposals []string, styled bool) string {
+func AgentMemoryList(level string, proposals []string, styled bool) string {
 	if !styled {
 		var b strings.Builder
 		for _, p := range proposals {
@@ -46,7 +72,7 @@ func AgentMemoryList(project string, proposals []string, styled bool) string {
 		return b.String()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "project: %s\npending memory proposals:\n", project)
+	fmt.Fprintf(&b, "level: %s\npending memory proposals:\n", level)
 	if len(proposals) == 0 {
 		b.WriteString("  (none)\n")
 		return b.String()
@@ -58,8 +84,43 @@ func AgentMemoryList(project string, proposals []string, styled bool) string {
 	return b.String()
 }
 
-// AgentSearch renders `phi agent search`, grouped project -> conversation.
-// Each hit says whether the query matched a title or the body.
+// AgentMemoryListAll renders `phi agent memory list-all`.
+func AgentMemoryListAll(all map[string][]string) string {
+	keys := make([]string, 0, len(all))
+	for k := range all {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%-20s %d pending\n", k, len(all[k]))
+	}
+	return b.String()
+}
+
+// AgentChatList renders `phi agent chat list`.
+func AgentChatList(metas []agent.TranscriptMeta) string {
+	var b strings.Builder
+	if len(metas) == 0 {
+		b.WriteString("no chats\n")
+		return b.String()
+	}
+	for _, m := range metas {
+		mark := " "
+		if m.Pinned {
+			mark = "*"
+		}
+		proj := m.Project
+		if proj == "" {
+			proj = "(unfiled)"
+		}
+		fmt.Fprintf(&b, "%s %s  [%s/%s]  %s\n", mark, m.ID, proj, m.Profile, m.Title)
+	}
+	return b.String()
+}
+
+// AgentSearch renders `phi agent search`, grouped project -> hit. Each hit
+// says whether the query matched a title or the body.
 func AgentSearch(query string, res agent.SearchResults) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "search: %q\n", query)
@@ -69,10 +130,8 @@ func AgentSearch(query string, res agent.SearchResults) string {
 	}
 	for _, g := range res.Groups {
 		label := g.Project
-		if label == "_unfiled" {
-			label = "(unfiled)"
-		} else if label == "_memory" {
-			label = "(memory & instructions)"
+		if label == "" {
+			label = "(system / unfiled)"
 		}
 		fmt.Fprintf(&b, "\n%s\n", label)
 		for _, h := range g.Hits {
@@ -95,7 +154,7 @@ func AgentSearch(query string, res agent.SearchResults) string {
 func AgentSessionList(recs []agent.SessionRecord) string {
 	var b strings.Builder
 	if len(recs) == 0 {
-		b.WriteString("no coding sessions recorded\n")
+		b.WriteString("no terminal sessions recorded\n")
 		return b.String()
 	}
 	for _, r := range recs {

@@ -1,11 +1,36 @@
 package agent
 
 import (
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
-func TestTranscriptMirrorAndSearch(t *testing.T) {
+// writeSession drops a minimal pi session JSONL plus phi sidecar into dir,
+// backdated by age so ordering tests are deterministic.
+func writeFakeSession(t *testing.T, dir, id string, age time.Duration, sidecar Sidecar) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	jsonl := filepath.Join(dir, "20260101-000000_"+id+".jsonl")
+	line := `{"type":"message","id":"a1","parentId":null,"timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"user","content":"hello there","timestamp":1}}` + "\n"
+	if err := os.WriteFile(jsonl, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sidecar.ID = id
+	if err := WriteSidecar(dir, sidecar); err != nil {
+		t.Fatal(err)
+	}
+	mt := time.Now().Add(-age)
+	if err := os.Chtimes(jsonl, mt, mt); err != nil {
+		t.Fatal(err)
+	}
+	return jsonl
+}
+
+func TestChatListOrdering(t *testing.T) {
 	m := testModel(t)
 	if _, err := m.Ensure(); err != nil {
 		t.Fatal(err)
@@ -13,68 +38,101 @@ func TestTranscriptMirrorAndSearch(t *testing.T) {
 	if err := m.NewProject("study", ProjectMeta{}); err != nil {
 		t.Fatal(err)
 	}
-
-	if err := m.WriteTranscript("study", "20260101-100000", "Group theory",
-		"## you\nwhat is a coset\n\n## agent\na coset is ..."); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.WriteTranscript("study", "20260101-110000", "Linear maps",
-		"## you\nkernel and image\n\n## agent\nthe kernel is the preimage of zero"); err != nil {
-		t.Fatal(err)
-	}
-	// An unfiled conversation.
-	if err := m.WriteTranscript("", "20260101-120000", "Random", "## you\nhello"); err != nil {
-		t.Fatal(err)
-	}
-
-	list, err := m.ListTranscripts("study")
-	if err != nil || len(list) != 2 {
-		t.Fatalf("ListTranscripts(study) = %v, err %v", list, err)
-	}
-
-	// Pin one; it must sort first and be recorded in project.json.
-	if err := m.SetTranscriptPin("20260101-110000", true); err != nil {
-		t.Fatal(err)
-	}
-	list, _ = m.ListTranscripts("study")
-	if list[0].ID != "20260101-110000" || !list[0].Pinned {
-		t.Errorf("pinned transcript did not sort first: %+v", list)
-	}
-	meta, _ := m.LoadProjectMeta("study")
-	if len(meta.Pins) != 1 || meta.Pins[0] != "20260101-110000" {
-		t.Errorf("project.json pins = %v", meta.Pins)
-	}
-
-	// Body-only match must find the right conversation, never touching any DB.
-	res, err := m.Search("preimage of zero", "")
+	dir, err := m.SessionsDir("study")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasHit(res, "20260101-110000", false, true) {
-		t.Errorf("body search miss: %+v", res)
-	}
-	// Title match is flagged separately.
-	res, _ = m.Search("group theory", "")
-	if !hasHit(res, "20260101-100000", true, false) {
-		t.Errorf("title search miss: %+v", res)
-	}
-	// Retitle updates both the front-matter and the heading.
-	if err := m.SetTranscriptTitle("20260101-120000", "Renamed chat"); err != nil {
+
+	writeFakeSession(t, dir, "old", 2*time.Hour, Sidecar{Profile: "general", Project: "study"})
+	writeFakeSession(t, dir, "new", time.Minute, Sidecar{Profile: "general", Project: "study"})
+	writeFakeSession(t, dir, "pinned-old", 3*time.Hour, Sidecar{Profile: "general", Project: "study", Pinned: true})
+
+	list, err := m.ListTranscripts("study", false)
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, md, _ := m.TranscriptByID("20260101-120000")
-	if !strings.Contains(md, "title: Renamed chat") || !strings.Contains(md, "# Renamed chat") {
-		t.Errorf("retitle incomplete:\n%s", md)
+	if len(list) != 3 {
+		t.Fatalf("list = %+v", list)
+	}
+	// Pinned first, regardless of age; then newest first among the rest.
+	if list[0].ID != "pinned-old" {
+		t.Errorf("list[0] = %q, want pinned-old", list[0].ID)
+	}
+	if list[1].ID != "new" || list[2].ID != "old" {
+		t.Errorf("unpinned order = [%s %s], want [new old]", list[1].ID, list[2].ID)
 	}
 }
 
-func hasHit(res SearchResults, id string, wantTitle, wantBody bool) bool {
-	for _, g := range res.Groups {
-		for _, h := range g.Hits {
-			if h.ID == id && h.InTitle == wantTitle && h.InBody == wantBody {
-				return true
-			}
-		}
+func TestChatTitleResolution(t *testing.T) {
+	m := testModel(t)
+	if _, err := m.Ensure(); err != nil {
+		t.Fatal(err)
 	}
-	return false
+	dir := m.sessionsDirSystem()
+
+	// 1. Explicit sidecar title wins.
+	writeFakeSession(t, dir, "titled", 0, Sidecar{Profile: "general", Title: "Custom Title"})
+	// 2. No sidecar title: falls back to the first user message, truncated.
+	writeFakeSession(t, dir, "untitled", 0, Sidecar{Profile: "general"})
+	// 3. No user message and no title at all: falls back to the id.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bare := filepath.Join(dir, "20260101-000000_bare.jsonl")
+	if err := os.WriteFile(bare, []byte(`{"type":"usage","id":"u1","parentId":null,"timestamp":"2026-01-01T00:00:00.000Z","kind":"x"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := m.ListTranscripts("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]TranscriptMeta{}
+	for _, tr := range list {
+		byID[tr.ID] = tr
+	}
+	if byID["titled"].Title != "Custom Title" {
+		t.Errorf("titled.Title = %q", byID["titled"].Title)
+	}
+	if byID["untitled"].Title != "hello there" {
+		t.Errorf("untitled.Title = %q, want the first user message", byID["untitled"].Title)
+	}
+	if byID["bare"].Title != "bare" {
+		t.Errorf("bare.Title = %q, want the id", byID["bare"].Title)
+	}
+}
+
+func TestChatPinTitleDelete(t *testing.T) {
+	m := testModel(t)
+	if _, err := m.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	dir := m.sessionsDirSystem()
+	jsonl := writeFakeSession(t, dir, "s1", 0, Sidecar{Profile: "general"})
+
+	if err := m.SetChatPinned("s1", true); err != nil {
+		t.Fatal(err)
+	}
+	_, _, sc, err := m.FindTranscript("s1")
+	if err != nil || !sc.Pinned {
+		t.Fatalf("pinned = %v, err %v", sc.Pinned, err)
+	}
+
+	if err := m.SetChatTitle("s1", "  Renamed  "); err != nil {
+		t.Fatal(err)
+	}
+	meta, _, err := m.LoadTranscript("s1")
+	if err != nil || meta.Title != "Renamed" {
+		t.Fatalf("title = %q, err %v", meta.Title, err)
+	}
+
+	if err := m.DeleteChat("s1"); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(jsonl) {
+		t.Error("jsonl not deleted")
+	}
+	if _, _, _, err := m.FindTranscript("s1"); err == nil {
+		t.Error("FindTranscript should fail after delete")
+	}
 }

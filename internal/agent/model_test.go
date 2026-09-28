@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// testModel points DataRoot/StateDir/ConfigDir at fresh temp dirs and
+// returns an opened Model.
 func testModel(t *testing.T) *Model {
 	t.Helper()
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -19,56 +22,28 @@ func testModel(t *testing.T) *Model {
 	return m
 }
 
-func TestModelEnsureSeedsTwoPersonalities(t *testing.T) {
+func TestModelEnsureCreatesSkeleton(t *testing.T) {
 	m := testModel(t)
-	created, err := m.Ensure()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(created) != 2 {
-		t.Fatalf("Ensure created %d files, want 2: %v", len(created), created)
-	}
-	ps, _ := m.Personalities()
-	if strings.Join(ps, ",") != "general,technical" {
-		t.Errorf("personalities = %v", ps)
-	}
-	// Idempotent: a second Ensure creates nothing and does not overwrite.
-	prompt := filepath.Join(m.personalityDir("general"), "prompt.md")
-	if err := os.WriteFile(prompt, []byte("EDITED BY USER"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	again, _ := m.Ensure()
-	if len(again) != 0 {
-		t.Errorf("second Ensure created %v, want nothing", again)
-	}
-	got, _ := os.ReadFile(prompt)
-	if string(got) != "EDITED BY USER" {
-		t.Error("Ensure overwrote a user-edited personality")
-	}
-}
-
-func TestModelMigratesFlatPersonalities(t *testing.T) {
-	m := testModel(t)
-	if err := os.MkdirAll(m.personalitaDir(), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	flat := filepath.Join(m.personalitaDir(), "notes.md")
-	if err := os.WriteFile(flat, []byte("notes personality"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := m.Ensure(); err != nil {
 		t.Fatal(err)
 	}
-	if fileExists(flat) {
-		t.Error("flat personality file should have been migrated away")
+	for _, dir := range []string{
+		m.proposteDirSystem(), m.sessionsDirSystem(), m.projectsDir(),
+		filepath.Join(m.profileDir(General), "proposte"),
+		filepath.Join(m.profileDir(Academic), "proposte"),
+		filepath.Join(m.profileDir(Coding), "proposte"),
+	} {
+		if !dirExists(dir) {
+			t.Errorf("missing %s", dir)
+		}
 	}
-	txt, err := m.PersonalityPrompt("notes")
-	if err != nil || txt != "notes personality" {
-		t.Errorf("migrated prompt = %q, err %v", txt, err)
+	// Idempotent: a second Ensure creates nothing new.
+	report, err := m.Ensure()
+	if err != nil {
+		t.Fatal(err)
 	}
-	ps, _ := m.Personalities()
-	if strings.Join(ps, ",") != "general,notes,technical" {
-		t.Errorf("personalities after migration = %v", ps)
+	if len(report) != 0 {
+		t.Errorf("second Ensure reported %v, want nothing", report)
 	}
 }
 
@@ -95,23 +70,22 @@ func TestModelProjectLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.Description != "exam prep" || meta.DefaultPersonality != "general" {
+	if meta.Description != "exam prep" || meta.DefaultProfile != General {
 		t.Errorf("meta = %+v", meta)
 	}
-	// progetto.md is regenerated from project.json.
-	prog, _ := m.ProjectInstructions("study")
-	if !strings.Contains(prog, "exam prep") {
-		t.Errorf("progetto.md did not carry the description:\n%s", prog)
+	instr, _ := m.ProjectInstructionsText("study")
+	if !strings.Contains(instr, "exam prep") {
+		t.Errorf("instructions.md did not carry the description:\n%s", instr)
 	}
 
-	if err := m.SetActiveProject("nope"); err == nil {
-		t.Error("SetActiveProject on a missing project should fail")
-	}
-	if err := m.SetActiveProject("study"); err != nil {
+	if err := m.DeleteProject("study"); err != nil {
 		t.Fatal(err)
 	}
-	if a, _ := m.ActiveProject(); a != "study" {
-		t.Errorf("active = %q, want study", a)
+	if m.HasProject("study") {
+		t.Error("project still present after DeleteProject")
+	}
+	if err := m.DeleteProject("study"); err == nil {
+		t.Error("deleting a missing project should fail")
 	}
 }
 
@@ -156,9 +130,9 @@ func TestModelAcceptProposalAppendsLiteralPerLevel(t *testing.T) {
 	}
 
 	levels := map[string]MemLevel{
-		"system":      SystemLevel(),
-		"personality": PersonalityLevel("general"),
-		"project":     ProjectLevel("p"),
+		"system":  SystemLevel(),
+		"profile": ProfileLevel(General),
+		"project": ProjectLevel("p"),
 	}
 	for label, lvl := range levels {
 		dir, err := m.proposteDir(lvl)
@@ -182,28 +156,128 @@ func TestModelAcceptProposalAppendsLiteralPerLevel(t *testing.T) {
 	}
 }
 
-func TestPersonalityCRUD(t *testing.T) {
-	m := testModel(t)
+// TestLegacyMigration builds a fake a1 legacy tree by hand and checks Ensure
+// copies it non-destructively into the new layout exactly once.
+func TestLegacyMigration(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	legacyRoot := filepath.Join(dataHome, "phi-agent", "a1")
+	mustMkdirAll(t, filepath.Join(legacyRoot, "proposte"))
+	mustWriteFile(t, filepath.Join(legacyRoot, "memoria.md"), "system fact\n")
+	mustWriteFile(t, filepath.Join(legacyRoot, "proposte", "p1.md"), "proposal one\n")
+	mustMkdirAll(t, filepath.Join(legacyRoot, "personalita", "general"))
+	mustWriteFile(t, filepath.Join(legacyRoot, "personalita", "general", "memoria.md"), "general fact\n")
+	mustMkdirAll(t, filepath.Join(legacyRoot, "personalita", "technical"))
+	mustWriteFile(t, filepath.Join(legacyRoot, "personalita", "technical", "memoria.md"), "technical fact\n")
+	mustMkdirAll(t, filepath.Join(legacyRoot, "personalita", "other"))
+	mustWriteFile(t, filepath.Join(legacyRoot, "personalita", "other", "memoria.md"), "other fact\n")
+
+	projDir := filepath.Join(legacyRoot, "projects", "study")
+	mustMkdirAll(t, filepath.Join(projDir, "proposte"))
+	mustMkdirAll(t, filepath.Join(projDir, "output"))
+	mustMkdirAll(t, filepath.Join(projDir, "materiali"))
+	mustMkdirAll(t, filepath.Join(projDir, "conversazioni"))
+	mustMkdirAll(t, filepath.Join(projDir, "archivio"))
+	mustWriteFile(t, filepath.Join(projDir, "memoria.md"), "project fact\n")
+	mustWriteFile(t, filepath.Join(projDir, "output", "notes.md"), "notes\n")
+	mustWriteFile(t, filepath.Join(projDir, "materiali", "a.pdf"), "pdf\n")
+	mustWriteFile(t, filepath.Join(projDir, "conversazioni", "c1.md"), "chat\n")
+	mustWriteFile(t, filepath.Join(projDir, "archivio", "arc.md"), "arch\n")
+	legacyMeta := map[string]any{
+		"title":               "Study",
+		"default_personality": "technical",
+		"folders":             []string{"/home/u/Notes"},
+	}
+	b, _ := json.Marshal(legacyMeta)
+	mustWriteFile(t, filepath.Join(projDir, "project.json"), string(b))
+
+	m, err := OpenModel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := m.Ensure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report) == 0 {
+		t.Fatal("Ensure reported nothing for a legacy migration")
+	}
+
+	if got, _ := m.MemoryText(SystemLevel()); got != "system fact\n" {
+		t.Errorf("system memoria.md = %q", got)
+	}
+	if !fileExists(filepath.Join(m.proposteDirSystem(), "p1.md")) {
+		t.Error("system proposal not migrated")
+	}
+	if got, _ := m.MemoryText(ProfileLevel(General)); got != "general fact\n" {
+		t.Errorf("profile general memoria.md = %q", got)
+	}
+	if got, _ := m.MemoryText(ProfileLevel(Coding)); got != "technical fact\n" {
+		t.Errorf("profile coding memoria.md (from technical) = %q", got)
+	}
+
+	if !m.HasProject("study") {
+		t.Fatal("project study not migrated")
+	}
+	meta, err := m.LoadProjectMeta("study")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.DefaultProfile != General {
+		t.Errorf("migrated default_profile = %q, want general (from default_personality)", meta.DefaultProfile)
+	}
+	if len(meta.Folders) != 1 || meta.Folders[0].Mode != "ro" {
+		t.Errorf("migrated folders = %+v", meta.Folders)
+	}
+	if !fileExists(filepath.Join(m.projectDir("study"), "output", "notes.md")) {
+		t.Error("output/ not migrated")
+	}
+	if !fileExists(filepath.Join(m.projectDir("study"), "allegati", "a.pdf")) {
+		t.Error("materiali/ -> allegati/ not migrated")
+	}
+	if !fileExists(filepath.Join(m.projectDir("study"), "allegati", "legacy-conversazioni", "c1.md")) {
+		t.Error("conversazioni/ -> allegati/legacy-conversazioni/ not migrated")
+	}
+	if !fileExists(filepath.Join(m.projectDir("study"), "allegati", "legacy-archivio", "arc.md")) {
+		t.Error("archivio/ -> allegati/legacy-archivio/ not migrated")
+	}
+
+	foundOther := false
+	for _, line := range report {
+		if strings.Contains(line, "\"other\"") {
+			foundOther = true
+		}
+	}
+	if !foundOther {
+		t.Errorf("report did not mention the unmigrated 'other' personality: %v", report)
+	}
+
+	// Non-destructive: edit the migrated system memoria.md, run Ensure
+	// again, confirm it is untouched (marker present -> no second pass).
+	sysMem := filepath.Join(m.root, "memoria.md")
+	mustWriteFile(t, sysMem, "EDITED BY USER\n")
 	if _, err := m.Ensure(); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.WritePersonality("notes", "work in ~/Notes"); err != nil {
+	got, _ := os.ReadFile(sysMem)
+	if string(got) != "EDITED BY USER\n" {
+		t.Error("second Ensure re-ran the legacy migration and overwrote user data")
+	}
+}
+
+func mustMkdirAll(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if !m.HasPersonality("notes") {
-		t.Fatal("notes personality missing after write")
-	}
-	if err := m.RenamePersonality("notes", "notebook"); err != nil {
+}
+
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
-	}
-	if m.HasPersonality("notes") || !m.HasPersonality("notebook") {
-		t.Error("rename did not take")
-	}
-	// A personality that is a project default cannot be deleted.
-	if err := m.NewProject("np", ProjectMeta{DefaultPersonality: "notebook"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.DeletePersonality("notebook"); err == nil {
-		t.Error("deleting a project's default personality should fail")
 	}
 }

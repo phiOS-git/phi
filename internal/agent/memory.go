@@ -9,28 +9,30 @@ import (
 	"strings"
 )
 
-// Three-level memory: system, personality, project. Each has memoria.md
-// (read-only to agent) and writable proposte/. Agent never writes memoria;
-// client (outside containment) via AcceptProposal.
+// Three-level memory (§2): system, profile, project. Each level has a
+// read-only memoria.md and a writable proposte/ the agent may drop files
+// into but never promote itself. Promotion (AcceptProposal) is the only
+// path by which memoria.md is ever written, and it always runs outside the
+// containment.
 
 type MemKind string
 
 const (
-	MemSystem      MemKind = "system"
-	MemPersonality MemKind = "personality"
-	MemProject     MemKind = "project"
+	MemSystem  MemKind = "system"
+	MemProfile MemKind = "profile"
+	MemProject MemKind = "project"
 )
 
-// MemLevel names one memory level. Name is the personality or project name;
+// MemLevel names one memory level. Name is the profile or project name;
 // empty for system.
 type MemLevel struct {
 	Kind MemKind
 	Name string
 }
 
-func SystemLevel() MemLevel              { return MemLevel{Kind: MemSystem} }
-func PersonalityLevel(n string) MemLevel { return MemLevel{Kind: MemPersonality, Name: n} }
-func ProjectLevel(n string) MemLevel     { return MemLevel{Kind: MemProject, Name: n} }
+func SystemLevel() MemLevel             { return MemLevel{Kind: MemSystem} }
+func ProfileLevel(p Profile) MemLevel   { return MemLevel{Kind: MemProfile, Name: string(p)} }
+func ProjectLevel(name string) MemLevel { return MemLevel{Kind: MemProject, Name: name} }
 
 func (l MemLevel) String() string {
 	if l.Name == "" {
@@ -39,46 +41,59 @@ func (l MemLevel) String() string {
 	return string(l.Kind) + ":" + l.Name
 }
 
-// ParseMemLevel builds a level from a "--level" flag plus an optional name.
-func ParseMemLevel(kind, name string) (MemLevel, error) {
+func isMemoryProfile(p Profile) bool {
+	for _, mp := range MemoryProfiles() {
+		if mp == p {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseMemLevel builds a level from `--level` plus `--profile`/`--project`
+// (§7's LEVEL FLAGS).
+func ParseMemLevel(kind, profile, project string) (MemLevel, error) {
 	switch MemKind(kind) {
 	case MemSystem:
 		return SystemLevel(), nil
-	case MemPersonality:
-		if name == "" {
-			return MemLevel{}, errors.New("--level personality needs --personality NAME")
+	case MemProfile:
+		if profile == "" {
+			return MemLevel{}, errors.New("--level profile needs --profile NAME")
 		}
-		if !nameRE.MatchString(name) {
-			return MemLevel{}, fmt.Errorf("invalid personality name %q", name)
+		p, err := ParseProfile(profile)
+		if err != nil {
+			return MemLevel{}, err
 		}
-		return PersonalityLevel(name), nil
+		if !isMemoryProfile(p) {
+			return MemLevel{}, fmt.Errorf("profile %q has no memory level (want general, academic or coding)", p)
+		}
+		return ProfileLevel(p), nil
 	case MemProject:
-		if name == "" {
-			return MemLevel{}, errors.New("--level project needs a project (active or --project NAME)")
+		if project == "" {
+			return MemLevel{}, errors.New("--level project needs --project NAME")
 		}
-		if !nameRE.MatchString(name) {
-			return MemLevel{}, fmt.Errorf("invalid project name %q", name)
+		if err := validName("project", project); err != nil {
+			return MemLevel{}, err
 		}
-		return ProjectLevel(name), nil
+		return ProjectLevel(project), nil
 	default:
-		return MemLevel{}, fmt.Errorf("unknown memory level %q (want system, personality, project)", kind)
+		return MemLevel{}, fmt.Errorf("unknown memory level %q (want system, profile, project)", kind)
 	}
 }
-
-func (m *Model) systemProposteDir() string { return filepath.Join(m.root, "proposte") }
 
 func (m *Model) levelDir(l MemLevel) (string, error) {
 	switch l.Kind {
 	case MemSystem:
 		return m.root, nil
-	case MemPersonality:
-		if !m.HasPersonality(l.Name) {
-			return "", fmt.Errorf("no such personality: %q", l.Name)
-		}
-		if err := m.ensurePersonalityDir(l.Name); err != nil {
+	case MemProfile:
+		p, err := ParseProfile(l.Name)
+		if err != nil {
 			return "", err
 		}
-		return m.personalityDir(l.Name), nil
+		if !isMemoryProfile(p) {
+			return "", fmt.Errorf("profile %q has no memory level", p)
+		}
+		return m.profileDir(p), nil
 	case MemProject:
 		if !m.HasProject(l.Name) {
 			return "", fmt.Errorf("no such project: %q", l.Name)
@@ -112,27 +127,28 @@ func (m *Model) MemoryText(l MemLevel) (string, error) {
 		return "", err
 	}
 	s, err := readFileString(p)
-	if errors.Is(err, os.ErrNotExist) {
+	if os.IsNotExist(err) {
 		return "", nil
 	}
 	return s, err
 }
 
 // Proposals lists pending memory proposals for a level: files under its
-// proposte/, which the agent may write but not promote.
+// proposte/, which the agent may write but not promote. Never nil, so JSON
+// output is "[]" rather than "null" when there are none.
 func (m *Model) Proposals(l MemLevel) ([]string, error) {
 	dir, err := m.proposteDir(l)
 	if err != nil {
 		return nil, err
 	}
+	out := []string{}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return out, nil
 		}
 		return nil, err
 	}
-	var out []string
 	for _, e := range entries {
 		if !e.IsDir() {
 			out = append(out, e.Name())
@@ -142,8 +158,9 @@ func (m *Model) Proposals(l MemLevel) ([]string, error) {
 	return out, nil
 }
 
-// AllProposals returns every pending proposal across system, every
-// personality, and every project, keyed by level.
+// AllProposals returns every pending proposal across system, every memory
+// profile, and every project, keyed by level string (§7: every key present
+// even when empty).
 func (m *Model) AllProposals() (map[string][]string, error) {
 	out := map[string][]string{}
 	add := func(l MemLevel) error {
@@ -151,17 +168,14 @@ func (m *Model) AllProposals() (map[string][]string, error) {
 		if err != nil {
 			return err
 		}
-		if len(props) > 0 {
-			out[l.String()] = props
-		}
+		out[l.String()] = props
 		return nil
 	}
 	if err := add(SystemLevel()); err != nil {
 		return nil, err
 	}
-	ps, _ := m.Personalities()
-	for _, p := range ps {
-		if err := add(PersonalityLevel(p)); err != nil {
+	for _, p := range MemoryProfiles() {
+		if err := add(ProfileLevel(p)); err != nil {
 			return nil, err
 		}
 	}
@@ -186,10 +200,8 @@ func (m *Model) ProposalText(l MemLevel, name string) (string, error) {
 	return readFileString(filepath.Join(dir, name))
 }
 
-// AcceptProposal appends a proposal's literal text to the level's memoria.md
-// and removes it from proposte/. This is the client promoting an approved
-// proposal — the only path by which memory is ever written, at any
-// level, and it runs outside the containment.
+// AcceptProposal appends a proposal's literal text to the level's
+// memoria.md and removes it from proposte/.
 func (m *Model) AcceptProposal(l MemLevel, name string) error {
 	if err := checkSegment(name); err != nil {
 		return err
@@ -224,13 +236,7 @@ func (m *Model) AcceptProposal(l MemLevel, name string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Remove(pPath); err != nil {
-		return err
-	}
-	if l.Kind == MemPersonality {
-		return m.syncPersonalityAgent(l.Name)
-	}
-	return nil
+	return os.Remove(pPath)
 }
 
 // RejectProposal removes a proposal without promoting it.

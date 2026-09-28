@@ -12,16 +12,17 @@ import (
 	"time"
 )
 
-// A2 session metadata store. `phi agent code`
-// records one JSON file per coding session OUTSIDE the containment; the shell
-// panel reads these files. There is NO inbound network path into A2's
-// namespace — A1 and A2 share no paths, tools, or credentials.
+// Terminal TUI session metadata store. `phi agent code`/`tui`
+// records one JSON file per terminal session OUTSIDE the containment; the
+// shell panel reads these files.
 //
-//	~/.local/state/phi-agent/a2/sessions/<id>.json
+//	~/.local/state/phi-agent/terminal/<id>.json
 
-// SessionRecord is one A2 coding session.
+// SessionRecord is one terminal TUI session.
 type SessionRecord struct {
 	ID             string    `json:"id"`
+	Profile        string    `json:"profile,omitempty"`
+	Project        string    `json:"project,omitempty"`
 	Dir            string    `json:"dir"`
 	Status         string    `json:"status"` // "active" | "ended"
 	Started        time.Time `json:"started"`
@@ -32,31 +33,26 @@ type SessionRecord struct {
 	ExitNote       string    `json:"exit_note,omitempty"`
 }
 
-func sessionsDir() (string, error) {
-	sd, err := A2.StateDir()
+func terminalDir() (string, error) {
+	sd, err := stateHome()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(sd, "sessions"), nil
+	return filepath.Join(sd, "phi-agent", "terminal"), nil
 }
 
 func sessionPath(id string) (string, error) {
 	if err := checkSegment(id); err != nil {
 		return "", err
 	}
-	d, err := sessionsDir()
+	d, err := terminalDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(d, id+".json"), nil
 }
 
-// NewSessionID mints a short, sortable, filesystem-safe session id.
-func NewSessionID() string {
-	return time.Now().UTC().Format("20060102-150405")
-}
-
-// RecordSessionStart writes the initial record for a coding session.
+// RecordSessionStart writes the initial record for a terminal session.
 func RecordSessionStart(rec SessionRecord) error {
 	if rec.ID == "" {
 		rec.ID = NewSessionID()
@@ -131,7 +127,7 @@ func GetSession(id string) (SessionRecord, error) {
 // recent. A record whose process is gone but still marked "active" is
 // reconciled to "ended" on read (best-effort — the wrapper normally does this).
 func ListSessions() ([]SessionRecord, error) {
-	d, err := sessionsDir()
+	d, err := terminalDir()
 	if err != nil {
 		return nil, err
 	}

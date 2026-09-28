@@ -9,14 +9,14 @@ func TestSessionStore(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
 	id := NewSessionID()
-	if err := RecordSessionStart(SessionRecord{ID: id, Dir: "/home/x/proj", PID: os.Getpid()}); err != nil {
+	if err := RecordSessionStart(SessionRecord{ID: id, Profile: "coding", Dir: "/home/x/proj", PID: os.Getpid()}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := GetSession(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "active" || got.Dir != "/home/x/proj" {
+	if got.Status != "active" || got.Dir != "/home/x/proj" || got.Profile != "coding" {
 		t.Errorf("record = %+v", got)
 	}
 
@@ -41,5 +41,16 @@ func TestSessionStore(t *testing.T) {
 		if r.ID == dead && r.Status != "ended" {
 			t.Errorf("dead-pid session not reconciled: %+v", r)
 		}
+	}
+}
+
+func TestNewSessionIDFormat(t *testing.T) {
+	id := NewSessionID()
+	// YYYYMMDD-HHMMSS-xxxxxx: 15 + 1 + 6 = 22 chars, two hyphens.
+	if len(id) != 22 {
+		t.Fatalf("NewSessionID() = %q, want 22 chars", id)
+	}
+	if err := checkSegment(id); err != nil {
+		t.Errorf("NewSessionID() not a valid filename segment: %v", err)
 	}
 }

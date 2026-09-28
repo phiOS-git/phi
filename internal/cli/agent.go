@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -19,37 +20,41 @@ const agentUsage = `usage: phi agent <verb> [arguments]
 Verbs:
   broker [--instance a1|a2] [--check]
                     run the provider-credential broker.
-  mcp               run the phi MCP server on stdio (tool 5).
-  init              create the data model (two seed personalities, no
-                    projects) under the A1 XDG data directory. Idempotent;
-                    migrates personalita/<name>.md -> personalita/<name>/prompt.md.
+  init              create the data root skeleton (binding contract §2) and
+                    migrate ~/.local/share/phi-agent/a1/ (legacy) into it,
+                    non-destructively. Idempotent.
   project           projects and their structured metadata (project.json):
-                    list | current | show NAME | new NAME [flags] | set NAME [flags]
-                    | use NAME [--no-restart] | use --none [--no-restart]
-                    | folder add|remove NAME PATH
-  personality       personalities, editable from the panel:
-                    list | show NAME | new NAME [--from-file F] | write NAME --from-file F
-                    | rename OLD NEW | delete NAME
+                    list [--json] | show NAME [--json]
+                    | new NAME [--title T] [--description D] [--profile P]
+                      [--instruction-add TEXT]... [--folder MODE:PATH]...
+                    | set NAME [same flags] [--instruction-remove TEXT]...
+                    | folder add NAME PATH [--mode ro|rw] [--as FOLDER]
+                    | folder remove NAME FOLDER
+                    | folder mode NAME FOLDER ro|rw
+                    | delete NAME [--yes]
   memory            review memory proposals at a level:
-                    list | show FILE | accept FILE | reject FILE
-                    [--level system|personality|project] [--personality NAME]
-                    [--project NAME]
-  chat              the client-side transcript mirror:
-                    list [--project NAME] | show ID | sync ID --from-file F
-                    [--project NAME] [--title T] | pin ID | unpin ID | title ID TEXT
+                    list | list-all | show FILE | accept FILE | reject FILE
+                    [--level system|profile|project] [--profile NAME]
+                    [--project NAME] [--json]
+  chat              pi session transcripts:
+                    list [--project NAME | --unfiled] [--json]
+                    | show ID [--json] | pin ID | unpin ID | title ID TEXT
+                    | delete ID [--yes]
   search QUERY [--project NAME] [--json]
-                    search phi-owned markdown (mirrors, archive, memory,
-                    instructions). Never queries opencode.
-  session           A2 coding sessions, from phi-owned metadata:
+                    search phi-owned text: transcripts, memory, project
+                    instructions, and text attachments.
+  session           terminal TUI sessions (phi agent code/tui), from
+                    phi-owned metadata:
                     list [--json] | show ID
   code DIR [-- ARGS...]
-                    open the A2 coding agent in DIR (the only rw mount for the
-                    session), guarded by the blocklist. Records session metadata.
+                    open the coding profile in DIR (the only rw mount for
+                    the session), guarded by the blocklist. Records session
+                    metadata.
   ask [--personality NAME] PROMPT
                     one inline question to the running A1 service.
 
-phi never assumes opencode's on-disk format; it talks to opencode only over
-its documented loopback HTTP API.
+phi never assumes pi's on-disk format beyond the documented session JSONL it
+reads for transcripts; it never queries pi's runtime state directly.
 `
 
 func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
@@ -60,14 +65,10 @@ func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
 	switch args[0] {
 	case "broker":
 		return runAgentBroker(args[1:], stdout, stderr)
-	case "mcp":
-		return runAgentMCP(args[1:], stdout, stderr)
 	case "init":
 		return runAgentInit(args[1:], stdout, stderr)
 	case "project":
 		return runAgentProject(args[1:], stdout, stderr, styled)
-	case "personality":
-		return runAgentPersonality(args[1:], stdout, stderr, styled)
 	case "memory":
 		return runAgentMemory(args[1:], stdout, stderr, styled)
 	case "chat":
@@ -90,7 +91,7 @@ func runAgent(args []string, stdout, stderr io.Writer, styled bool) int {
 	}
 }
 
-// --- broker / mcp / init / ask (unchanged behaviour) -------------------------
+// --- broker / ask / code (unchanged behaviour) ------------------------------
 
 func runAgentBroker(args []string, stdout, stderr io.Writer) int {
 	instName := "a1"
@@ -138,45 +139,6 @@ func runAgentBroker(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runAgentMCP(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		fmt.Fprintf(stderr, "%s: agent mcp: takes no arguments\n", progName)
-		return 1
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	if err := agent.RunMCP(ctx, os.Stdin, stdout); err != nil && err != context.Canceled {
-		fmt.Fprintf(stderr, "%s: agent mcp: %v\n", progName, err)
-		return 1
-	}
-	return 0
-}
-
-func runAgentInit(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		fmt.Fprintf(stderr, "%s: agent init: takes no arguments\n", progName)
-		return 1
-	}
-	m, err := agent.OpenModel()
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: agent init: %v\n", progName, err)
-		return 1
-	}
-	created, err := m.Ensure()
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: agent init: %v\n", progName, err)
-		return 1
-	}
-	if len(created) == 0 {
-		fmt.Fprintln(stdout, "data model already in place")
-	} else {
-		for _, c := range created {
-			fmt.Fprintf(stdout, "created %s\n", c)
-		}
-	}
-	return 0
-}
-
 func runAgentAsk(args []string, stdout, stderr io.Writer) int {
 	var personality string
 	var promptParts []string
@@ -210,7 +172,73 @@ func runAgentAsk(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// --- project ---------------------------------------------------------------
+func runAgentCode(args []string, stdout, stderr io.Writer) int {
+	var dir string
+	var engineArgs []string
+	windowAddr := os.Getenv("PHI_AGENT_WINDOW_ADDR")
+	detach := false
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--":
+			engineArgs = args[i+1:]
+			i = len(args)
+		case args[i] == "--detach":
+			detach = true
+		case args[i] == "--window-addr" && i+1 < len(args):
+			windowAddr = args[i+1]
+			i++
+		case !strings.HasPrefix(args[i], "-") && dir == "":
+			dir = args[i]
+		default:
+			fmt.Fprintf(stderr, "%s: agent code: unexpected argument %q\n", progName, args[i])
+			return 1
+		}
+	}
+	if dir == "" {
+		fmt.Fprintf(stderr, "%s: agent code: needs a directory\n", progName)
+		return 1
+	}
+	id, err := agent.RunCode(agent.CodeConfig{
+		Dir: dir, EngineArgs: engineArgs, WindowAddr: windowAddr, Detach: detach,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent code: %v\n", progName, err)
+		return 1
+	}
+	if detach {
+		fmt.Fprintln(stdout, id)
+	}
+	return 0
+}
+
+// --- init --------------------------------------------------------------
+
+func runAgentInit(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		fmt.Fprintf(stderr, "%s: agent init: takes no arguments\n", progName)
+		return 1
+	}
+	m, err := agent.OpenModel()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent init: %v\n", progName, err)
+		return 1
+	}
+	report, err := m.Ensure()
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: agent init: %v\n", progName, err)
+		return 1
+	}
+	if len(report) == 0 {
+		fmt.Fprintln(stdout, "data model already in place")
+	} else {
+		for _, line := range report {
+			fmt.Fprintln(stdout, line)
+		}
+	}
+	return 0
+}
+
+// --- project -----------------------------------------------------------
 
 func runAgentProject(args []string, stdout, stderr io.Writer, styled bool) int {
 	m, err := agent.OpenModel()
@@ -232,37 +260,67 @@ func runAgentProject(args []string, stdout, stderr io.Writer, styled bool) int {
 
 	switch sub {
 	case "list":
-		projects, err := m.Projects()
+		asJSON := false
+		for _, a := range args {
+			if a == "--json" {
+				asJSON = true
+			}
+		}
+		summaries, err := m.ListProjectSummaries()
 		if err != nil {
 			return fail(err)
 		}
-		active, _ := m.ActiveProject()
-		personalities, _ := m.Personalities()
-		fmt.Fprint(stdout, view.AgentProjectList(projects, active, personalities))
-		return 0
-
-	case "current":
-		active, err := m.ActiveProject()
-		if err != nil {
-			return fail(err)
+		if asJSON {
+			chatProfiles := agent.ChatProfiles()
+			profileNames := make([]string, len(chatProfiles))
+			for i, p := range chatProfiles {
+				profileNames[i] = string(p)
+			}
+			out, _ := json.MarshalIndent(map[string]any{
+				"projects": summaries, "profiles": profileNames,
+			}, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
 		}
-		if active == "" {
-			fmt.Fprintln(stderr, "no active project")
-			return 1
-		}
-		fmt.Fprintln(stdout, active)
+		fmt.Fprint(stdout, view.AgentProjectList(summaries))
 		return 0
 
 	case "show":
-		if len(args) != 1 {
+		if len(args) == 0 {
 			return fail(fmt.Errorf("show needs a project name"))
 		}
-		meta, err := m.LoadProjectMeta(args[0])
+		name := args[0]
+		asJSON := false
+		for _, a := range args[1:] {
+			if a == "--json" {
+				asJSON = true
+			}
+		}
+		meta, err := m.LoadProjectMeta(name)
 		if err != nil {
 			return fail(err)
 		}
-		out, _ := json.MarshalIndent(meta, "", "  ")
-		fmt.Fprintln(stdout, string(out))
+		host := agent.HostShortName()
+		if asJSON {
+			type folderOut struct {
+				Name  string            `json:"name"`
+				Mode  string            `json:"mode"`
+				Paths map[string]string `json:"paths"`
+				Here  string            `json:"here"`
+			}
+			folders := make([]folderOut, 0, len(meta.Folders))
+			for _, f := range meta.Folders {
+				folders = append(folders, folderOut{Name: f.Name, Mode: f.Mode, Paths: f.Paths, Here: f.Paths[host]})
+			}
+			out, _ := json.MarshalIndent(map[string]any{
+				"name": name, "dir": m.ProjectDir(name), "title": meta.Title,
+				"description": meta.Description, "instructions": meta.Instructions,
+				"default_profile": meta.DefaultProfile, "folders": folders,
+			}, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
+		}
+		fmt.Fprint(stdout, view.AgentProjectShow(name, meta, m.ProjectDir(name), host))
 		return 0
 
 	case "new":
@@ -299,63 +357,79 @@ func runAgentProject(args []string, stdout, stderr io.Writer, styled bool) int {
 		return 0
 
 	case "folder":
-		if len(args) < 3 {
-			return fail(fmt.Errorf("folder <add|remove> NAME PATH"))
+		if len(args) < 1 {
+			return fail(fmt.Errorf("folder <add|remove|mode> ..."))
 		}
-		op, name, path := args[0], args[1], strings.Join(args[2:], " ")
+		op := args[0]
+		args = args[1:]
 		switch op {
 		case "add":
-			if err := m.AddProjectFolder(name, path); err != nil {
+			if len(args) < 2 {
+				return fail(fmt.Errorf("folder add NAME PATH [--mode ro|rw] [--as FOLDER]"))
+			}
+			name, path := args[0], args[1]
+			mode, as := "", ""
+			for i := 2; i < len(args); i++ {
+				switch args[i] {
+				case "--mode":
+					if i+1 < len(args) {
+						mode = args[i+1]
+						i++
+					}
+				case "--as":
+					if i+1 < len(args) {
+						as = args[i+1]
+						i++
+					}
+				}
+			}
+			if err := m.AddProjectFolder(name, path, as, mode); err != nil {
 				return fail(err)
 			}
-			fmt.Fprintf(stdout, "added folder of interest to %s\n", name)
+			fmt.Fprintf(stdout, "added folder to %s\n", name)
+			return 0
 		case "remove":
-			if err := m.RemoveProjectFolder(name, path); err != nil {
+			if len(args) != 2 {
+				return fail(fmt.Errorf("folder remove NAME FOLDER"))
+			}
+			if err := m.RemoveProjectFolder(args[0], args[1]); err != nil {
 				return fail(err)
 			}
-			fmt.Fprintf(stdout, "removed folder of interest from %s\n", name)
+			fmt.Fprintf(stdout, "removed folder from %s\n", args[0])
+			return 0
+		case "mode":
+			if len(args) != 3 {
+				return fail(fmt.Errorf("folder mode NAME FOLDER ro|rw"))
+			}
+			if err := m.SetProjectFolderMode(args[0], args[1], args[2]); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintf(stdout, "set folder mode on %s\n", args[0])
+			return 0
 		default:
-			return fail(fmt.Errorf("folder op %q (want add|remove)", op))
+			return fail(fmt.Errorf("folder op %q (want add|remove|mode)", op))
 		}
-		return 0
 
-	case "use":
-		noRestart := false
-		none := false
+	case "delete":
+		yes := false
 		var name string
 		for _, a := range args {
-			if a == "--no-restart" {
-				noRestart = true
-				continue
-			}
-			if a == "--none" {
-				none = true
+			if a == "--yes" {
+				yes = true
 				continue
 			}
 			name = a
 		}
-		if none {
-			if err := m.ClearActiveProject(); err != nil {
-				return fail(err)
-			}
-			fmt.Fprintln(stdout, "active project: (none)")
-		} else {
-			if name == "" {
-				return fail(fmt.Errorf("use needs a name (or --none to return to unfiled chat)"))
-			}
-			if err := m.SetActiveProject(name); err != nil {
-				return fail(err)
-			}
-			fmt.Fprintf(stdout, "active project: %s\n", name)
+		if name == "" {
+			return fail(fmt.Errorf("delete needs a project name"))
 		}
-		if noRestart {
-			return 0
+		if !yes {
+			return fail(fmt.Errorf("refusing to delete %q without --yes", name))
 		}
-		if err := agent.RestartA1(); err != nil {
-			fmt.Fprintf(stderr, "%s: agent project: marker written, but %v\n", progName, err)
-			return 1
+		if err := m.DeleteProject(name); err != nil {
+			return fail(err)
 		}
-		fmt.Fprintln(stdout, "restarted phi-agent-a1.service")
+		fmt.Fprintf(stdout, "deleted project %s\n", name)
 		return 0
 
 	default:
@@ -363,9 +437,10 @@ func runAgentProject(args []string, stdout, stderr io.Writer, styled bool) int {
 	}
 }
 
-// parseProjectFlags applies --description / --personality / --instruction-add /
-// --instruction-remove / --folder onto a base meta. args[0] is the project
-// name (or a flag for `new` when omitted); it is returned separately.
+// parseProjectFlags applies --title/--description/--profile/
+// --instruction-add/--instruction-remove/--folder onto a base meta. args[0]
+// is the project name (or a flag for `new` when omitted); it is returned
+// separately.
 func parseProjectFlags(args []string, base agent.ProjectMeta) (name string, meta agent.ProjectMeta, err error) {
 	meta = base
 	i := 0
@@ -373,6 +448,7 @@ func parseProjectFlags(args []string, base agent.ProjectMeta) (name string, meta
 		name = args[0]
 		i = 1
 	}
+	host := agent.HostShortName()
 	for ; i < len(args); i++ {
 		next := func() (string, bool) {
 			if i+1 >= len(args) {
@@ -390,9 +466,16 @@ func parseProjectFlags(args []string, base agent.ProjectMeta) (name string, meta
 			if v, ok := next(); ok {
 				meta.Description = v
 			}
-		case "--personality", "--default-personality":
+		case "--profile":
 			if v, ok := next(); ok {
-				meta.DefaultPersonality = v
+				p, perr := agent.ParseProfile(v)
+				if perr != nil {
+					return name, meta, perr
+				}
+				if p == agent.Inline {
+					return name, meta, fmt.Errorf("default profile cannot be inline")
+				}
+				meta.DefaultProfile = p
 			}
 		case "--instruction-add":
 			if v, ok := next(); ok {
@@ -410,103 +493,27 @@ func parseProjectFlags(args []string, base agent.ProjectMeta) (name string, meta
 			}
 		case "--folder":
 			if v, ok := next(); ok {
-				meta.Folders = append(meta.Folders, v)
+				mode, path, ok2 := strings.Cut(v, ":")
+				if !ok2 {
+					return name, meta, fmt.Errorf("--folder wants MODE:PATH, got %q", v)
+				}
+				if mode != "ro" && mode != "rw" {
+					return name, meta, fmt.Errorf("--folder mode %q (want ro or rw)", mode)
+				}
+				abs, aerr := filepath.Abs(path)
+				if aerr != nil {
+					return name, meta, aerr
+				}
+				fname := agent.SanitiseFolderName(filepath.Base(abs))
+				meta.Folders = append(meta.Folders, agent.Folder{
+					Name: fname, Mode: mode, Paths: map[string]string{host: abs},
+				})
 			}
 		default:
 			return name, meta, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 	return name, meta, nil
-}
-
-// --- personality ----------------------------------------------------------
-
-func runAgentPersonality(args []string, stdout, stderr io.Writer, styled bool) int {
-	m, err := agent.OpenModel()
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: agent personality: %v\n", progName, err)
-		return 1
-	}
-	if _, err := m.Ensure(); err != nil {
-		fmt.Fprintf(stderr, "%s: agent personality: %v\n", progName, err)
-		return 1
-	}
-	fail := func(e error) int { fmt.Fprintf(stderr, "%s: agent personality: %v\n", progName, e); return 1 }
-
-	sub := "list"
-	if len(args) > 0 {
-		sub = args[0]
-		args = args[1:]
-	}
-	switch sub {
-	case "list":
-		ps, err := m.Personalities()
-		if err != nil {
-			return fail(err)
-		}
-		for _, p := range ps {
-			fmt.Fprintln(stdout, p)
-		}
-		return 0
-	case "show":
-		if len(args) != 1 {
-			return fail(fmt.Errorf("show needs a name"))
-		}
-		txt, err := m.PersonalityPrompt(args[0])
-		if err != nil {
-			return fail(err)
-		}
-		fmt.Fprint(stdout, txt)
-		return 0
-	case "new", "write":
-		name, fromFile := "", ""
-		for i := 0; i < len(args); i++ {
-			if args[i] == "--from-file" && i+1 < len(args) {
-				fromFile = args[i+1]
-				i++
-			} else if !strings.HasPrefix(args[i], "-") && name == "" {
-				name = args[i]
-			}
-		}
-		if name == "" {
-			return fail(fmt.Errorf("%s needs a name", sub))
-		}
-		if sub == "new" && m.HasPersonality(name) {
-			return fail(fmt.Errorf("personality %q already exists", name))
-		}
-		body, rerr := readInput(fromFile)
-		if rerr != nil {
-			return fail(rerr)
-		}
-		if strings.TrimSpace(body) == "" && sub == "new" {
-			body = "You are a personality of the phiOS assistant.\n\n(Describe its disposition, scope, and how it should reason.)\n"
-		}
-		if err := m.WritePersonality(name, body); err != nil {
-			return fail(err)
-		}
-		fmt.Fprintf(stdout, "wrote personality %s\n", name)
-		return 0
-	case "rename":
-		if len(args) != 2 {
-			return fail(fmt.Errorf("rename OLD NEW"))
-		}
-		if err := m.RenamePersonality(args[0], args[1]); err != nil {
-			return fail(err)
-		}
-		fmt.Fprintf(stdout, "renamed %s -> %s\n", args[0], args[1])
-		return 0
-	case "delete":
-		if len(args) != 1 {
-			return fail(fmt.Errorf("delete needs a name"))
-		}
-		if err := m.DeletePersonality(args[0]); err != nil {
-			return fail(err)
-		}
-		fmt.Fprintf(stdout, "deleted %s\n", args[0])
-		return 0
-	default:
-		return fail(fmt.Errorf("unknown subcommand %q", sub))
-	}
 }
 
 // --- memory (level-aware) ------------------------------------------------
@@ -523,7 +530,7 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 	}
 	fail := func(e error) int { fmt.Fprintf(stderr, "%s: agent memory: %v\n", progName, e); return 1 }
 
-	levelKind, personality, project := "project", "", ""
+	levelKind, profileName, project, asJSON := "system", "", "", false
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -532,9 +539,9 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 				levelKind = args[i+1]
 				i++
 			}
-		case "--personality":
+		case "--profile":
 			if i+1 < len(args) {
-				personality = args[i+1]
+				profileName = args[i+1]
 				i++
 			}
 		case "--project":
@@ -542,18 +549,13 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 				project = args[i+1]
 				i++
 			}
+		case "--json":
+			asJSON = true
 		default:
 			rest = append(rest, args[i])
 		}
 	}
-	if levelKind == "project" && project == "" {
-		project, _ = m.ActiveProject()
-	}
-	name := project
-	if levelKind == "personality" {
-		name = personality
-	}
-	level, lerr := agent.ParseMemLevel(levelKind, name)
+	level, lerr := agent.ParseMemLevel(levelKind, profileName, project)
 	if lerr != nil {
 		return fail(lerr)
 	}
@@ -569,6 +571,11 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 		if err != nil {
 			return fail(err)
 		}
+		if asJSON {
+			out, _ := json.MarshalIndent(props, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
+		}
 		fmt.Fprint(stdout, view.AgentMemoryList(level.String(), props, styled))
 		return 0
 	case "list-all":
@@ -576,8 +583,12 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 		if err != nil {
 			return fail(err)
 		}
-		out, _ := json.MarshalIndent(all, "", "  ")
-		fmt.Fprintln(stdout, string(out))
+		if asJSON || !styled {
+			out, _ := json.MarshalIndent(all, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
+		}
+		fmt.Fprint(stdout, view.AgentMemoryListAll(all))
 		return 0
 	case "show":
 		if len(rest) != 1 {
@@ -588,6 +599,13 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 			return fail(err)
 		}
 		mem, _ := m.MemoryText(level)
+		if asJSON {
+			out, _ := json.MarshalIndent(map[string]string{
+				"level": level.String(), "file": rest[0], "current": mem, "proposal": text,
+			}, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
+		}
 		fmt.Fprint(stdout, view.AgentMemoryDiff(rest[0], strings.TrimRight(mem, "\n"), strings.TrimRight(text, "\n")))
 		return 0
 	case "accept":
@@ -613,7 +631,7 @@ func runAgentMemory(args []string, stdout, stderr io.Writer, styled bool) int {
 	}
 }
 
-// --- chat (transcript mirror) ------------------------------------------
+// --- chat (pi session transcripts) --------------------------------------
 
 func runAgentChat(args []string, stdout, stderr io.Writer, styled bool) int {
 	m, err := agent.OpenModel()
@@ -630,32 +648,7 @@ func runAgentChat(args []string, stdout, stderr io.Writer, styled bool) int {
 	}
 	switch sub {
 	case "list":
-		project := ""
-		for i := 0; i < len(args); i++ {
-			if args[i] == "--project" && i+1 < len(args) {
-				project = args[i+1]
-				i++
-			}
-		}
-		metas, err := m.ListTranscripts(project)
-		if err != nil {
-			return fail(err)
-		}
-		out, _ := json.MarshalIndent(metas, "", "  ")
-		fmt.Fprintln(stdout, string(out))
-		return 0
-	case "show":
-		if len(args) != 1 {
-			return fail(fmt.Errorf("show needs a conversation id"))
-		}
-		_, md, ferr := m.TranscriptByID(args[0])
-		if ferr != nil {
-			return fail(ferr)
-		}
-		io.WriteString(stdout, md)
-		return 0
-	case "sync":
-		id, project, title, fromFile := "", "", "", ""
+		project, unfiled, asJSON := "", false, false
 		for i := 0; i < len(args); i++ {
 			switch args[i] {
 			case "--project":
@@ -663,52 +656,90 @@ func runAgentChat(args []string, stdout, stderr io.Writer, styled bool) int {
 					project = args[i+1]
 					i++
 				}
-			case "--title":
-				if i+1 < len(args) {
-					title = args[i+1]
-					i++
-				}
-			case "--from-file":
-				if i+1 < len(args) {
-					fromFile = args[i+1]
-					i++
-				}
-			default:
-				if !strings.HasPrefix(args[i], "-") && id == "" {
-					id = args[i]
-				}
+			case "--unfiled":
+				unfiled = true
+			case "--json":
+				asJSON = true
 			}
 		}
-		if id == "" {
-			return fail(fmt.Errorf("sync needs a conversation id"))
-		}
-		body, rerr := readInput(fromFile)
-		if rerr != nil {
-			return fail(rerr)
-		}
-		if err := m.WriteTranscript(project, id, title, body); err != nil {
+		metas, err := m.ListTranscripts(project, unfiled)
+		if err != nil {
 			return fail(err)
 		}
-		fmt.Fprintf(stdout, "mirrored %s\n", id)
+		if asJSON {
+			out, _ := json.MarshalIndent(metas, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
+		}
+		fmt.Fprint(stdout, view.AgentChatList(metas))
 		return 0
+
+	case "show":
+		if len(args) == 0 {
+			return fail(fmt.Errorf("show needs a chat id"))
+		}
+		id := args[0]
+		asJSON := false
+		for _, a := range args[1:] {
+			if a == "--json" {
+				asJSON = true
+			}
+		}
+		meta, messages, err := m.LoadTranscript(id)
+		if err != nil {
+			return fail(err)
+		}
+		if asJSON {
+			out, _ := json.MarshalIndent(map[string]any{
+				"id": meta.ID, "title": meta.Title, "profile": meta.Profile,
+				"project": meta.Project, "messages": messages,
+			}, "", "  ")
+			fmt.Fprintln(stdout, string(out))
+			return 0
+		}
+		io.WriteString(stdout, agent.TranscriptMarkdown(meta, messages))
+		return 0
+
 	case "pin", "unpin":
 		if len(args) != 1 {
-			return fail(fmt.Errorf("%s needs a conversation id", sub))
+			return fail(fmt.Errorf("%s needs a chat id", sub))
 		}
-		if err := m.SetTranscriptPin(args[0], sub == "pin"); err != nil {
+		if err := m.SetChatPinned(args[0], sub == "pin"); err != nil {
 			return fail(err)
 		}
 		fmt.Fprintf(stdout, "%sned %s\n", sub, args[0])
 		return 0
+
 	case "title":
 		if len(args) < 2 {
 			return fail(fmt.Errorf("title ID TEXT"))
 		}
-		if err := m.SetTranscriptTitle(args[0], strings.Join(args[1:], " ")); err != nil {
+		if err := m.SetChatTitle(args[0], strings.Join(args[1:], " ")); err != nil {
 			return fail(err)
 		}
 		fmt.Fprintf(stdout, "retitled %s\n", args[0])
 		return 0
+
+	case "delete":
+		if len(args) == 0 {
+			return fail(fmt.Errorf("delete needs a chat id"))
+		}
+		id := args[0]
+		yes := false
+		for _, a := range args[1:] {
+			if a == "--yes" {
+				yes = true
+			}
+		}
+		if !yes {
+			return fail(fmt.Errorf("refusing to delete %q without --yes", id))
+		}
+		if err := m.DeleteChat(id); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintf(stdout, "deleted %s\n", id)
+		return 0
+
 	default:
 		return fail(fmt.Errorf("unknown subcommand %q", sub))
 	}
@@ -802,57 +833,4 @@ func runAgentSession(args []string, stdout, stderr io.Writer, styled bool) int {
 		fmt.Fprintf(stderr, "%s: agent session: unknown subcommand %q\n", progName, sub)
 		return 1
 	}
-}
-
-// --- code -------------------------------------------------------------
-
-func runAgentCode(args []string, stdout, stderr io.Writer) int {
-	var dir string
-	var engineArgs []string
-	windowAddr := os.Getenv("PHI_AGENT_WINDOW_ADDR")
-	detach := false
-	for i := 0; i < len(args); i++ {
-		switch {
-		case args[i] == "--":
-			engineArgs = args[i+1:]
-			i = len(args)
-		case args[i] == "--detach":
-			detach = true
-		case args[i] == "--window-addr" && i+1 < len(args):
-			windowAddr = args[i+1]
-			i++
-		case !strings.HasPrefix(args[i], "-") && dir == "":
-			dir = args[i]
-		default:
-			fmt.Fprintf(stderr, "%s: agent code: unexpected argument %q\n", progName, args[i])
-			return 1
-		}
-	}
-	if dir == "" {
-		fmt.Fprintf(stderr, "%s: agent code: needs a directory\n", progName)
-		return 1
-	}
-	id, err := agent.RunCode(agent.CodeConfig{
-		Dir: dir, EngineArgs: engineArgs, WindowAddr: windowAddr, Detach: detach,
-	})
-	if err != nil {
-		fmt.Fprintf(stderr, "%s: agent code: %v\n", progName, err)
-		return 1
-	}
-	if detach {
-		fmt.Fprintln(stdout, id)
-	}
-	return 0
-}
-
-// --- helpers ---------------------------------------------------------
-
-// readInput reads from a file path, or from stdin when path is "" or "-".
-func readInput(path string) (string, error) {
-	if path == "" || path == "-" {
-		b, err := io.ReadAll(os.Stdin)
-		return string(b), err
-	}
-	b, err := os.ReadFile(path)
-	return string(b), err
 }
