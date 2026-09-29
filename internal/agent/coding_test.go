@@ -230,3 +230,35 @@ func TestCodingTimeline(t *testing.T) {
 		t.Errorf("CodingTimeline (no transcript) = %+v, want empty Items", tl2)
 	}
 }
+
+// TestCodingRowsCachesEnrichment: listing twice with no transcript change
+// parses each transcript once — the watcher lists every two seconds.
+func TestCodingRowsCachesEnrichment(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	if err := os.WriteFile(path, []byte(`{"type":"message","id":"a","parentId":null,"timestamp":"2026-09-28T10:00:00Z","message":{"role":"user","content":"hi","timestamp":1}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordSessionStart(SessionRecord{ID: "cache-1", Dir: "/w", TranscriptPath: path}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	before := codingParses
+	if _, err := CodingRows(now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ActiveCodingRows(now); err != nil {
+		t.Fatal(err)
+	}
+	if got := codingParses - before; got != 1 {
+		t.Fatalf("parses = %d, want 1 (second listing must hit the cache)", got)
+	}
+	if err := os.WriteFile(path, []byte(`{"type":"message","id":"a","parentId":null,"timestamp":"2026-09-28T10:00:00Z","message":{"role":"user","content":"hello again","timestamp":1}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := CodingRows(now)
+	if codingParses-before != 2 || rows[0].Title != "hello again" {
+		t.Fatalf("after a change: parses %d, title %q", codingParses-before, rows[0].Title)
+	}
+}

@@ -128,8 +128,8 @@ func GetSession(id string) (SessionRecord, error) {
 // reconciled to "ended" on read (best-effort — the wrapper normally does this).
 // A record with no TranscriptPath yet (RunCode/RunTUI leave it empty: pi's
 // exact <timestamp>_<id>.jsonl name is not known at launch time) gets one
-// filled in here, lazily, from FindTranscript — never persisted, so this
-// never writes on every list call, only on a successful record end/update.
+// filled in here from FindTranscript and written back the first time it is
+// found, so a listing writes at most once per session.
 func ListSessions() ([]SessionRecord, error) {
 	d, err := terminalDir()
 	if err != nil {
@@ -160,8 +160,11 @@ func ListSessions() ([]SessionRecord, error) {
 			_ = writeSession(rec)
 		}
 		if rec.TranscriptPath == "" && merr == nil {
+			// Persisted once found, so later listings (polled every few
+			// seconds by the agent API) stop searching for it.
 			if _, jsonlPath, _, ferr := m.FindTranscript(rec.ID); ferr == nil && jsonlPath != "" {
 				rec.TranscriptPath = jsonlPath
+				_ = writeSession(rec)
 			}
 		}
 		out = append(out, rec)

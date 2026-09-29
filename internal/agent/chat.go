@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -183,22 +184,62 @@ func resolveTitle(sc Sidecar, jsonlPath string) string {
 		return sc.Title
 	}
 	if jsonlPath != "" {
-		if f, err := os.Open(jsonlPath); err == nil {
-			msgs, sessionName, perr := parseTranscript(f)
-			f.Close()
-			if perr == nil {
-				if sessionName != "" {
-					return sessionName
-				}
+		if t := transcriptTitle(jsonlPath); t != "" {
+			return t
+		}
+	}
+	return sc.ID
+}
+
+// titleCache holds the title derived from each transcript, keyed by path and
+// invalidated by size or mtime: listing sessions would otherwise re-parse
+// every untitled transcript in full on every call.
+var (
+	titleCacheMu sync.Mutex
+	titleCache   = map[string]cachedTitle{}
+)
+
+type cachedTitle struct {
+	title   string
+	size    int64
+	modTime time.Time
+}
+
+// transcriptTitle is pi's latest session name, else the first user message
+// (truncated), else "".
+func transcriptTitle(jsonlPath string) string {
+	fi, err := os.Stat(jsonlPath)
+	if err != nil {
+		return ""
+	}
+	titleCacheMu.Lock()
+	if c, ok := titleCache[jsonlPath]; ok && c.size == fi.Size() && c.modTime.Equal(fi.ModTime()) {
+		titleCacheMu.Unlock()
+		return c.title
+	}
+	titleCacheMu.Unlock()
+
+	title := ""
+	if f, err := os.Open(jsonlPath); err == nil {
+		msgs, sessionName, perr := parseTranscript(f)
+		f.Close()
+		if perr == nil {
+			if sessionName != "" {
+				title = sessionName
+			} else {
 				for _, msg := range msgs {
 					if msg.Role == "user" && strings.TrimSpace(msg.Text) != "" {
-						return truncate60(msg.Text)
+						title = truncate60(msg.Text)
+						break
 					}
 				}
 			}
 		}
 	}
-	return sc.ID
+	titleCacheMu.Lock()
+	titleCache[jsonlPath] = cachedTitle{title: title, size: fi.Size(), modTime: fi.ModTime()}
+	titleCacheMu.Unlock()
+	return title
 }
 
 func transcriptUpdated(jsonlPath string, sc Sidecar, sidecarFile string) time.Time {

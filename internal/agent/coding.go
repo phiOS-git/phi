@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -60,6 +61,74 @@ func CodingRows(now time.Time) ([]CodingRow, error) {
 	return rows, nil
 }
 
+// ActiveCodingRows is CodingRows restricted to running sessions — what the
+// serve watcher polls, so ended sessions cost nothing on every tick.
+func ActiveCodingRows(now time.Time) ([]CodingRow, error) {
+	recs, err := ListSessions()
+	if err != nil {
+		return nil, err
+	}
+	rows := []CodingRow{}
+	for _, rec := range recs {
+		if rec.Status == "active" {
+			rows = append(rows, CodingRowFor(rec, now))
+		}
+	}
+	return rows, nil
+}
+
+// codingEnrichment is everything a row derives from its transcript. It is
+// cached by path, size and mtime: the watcher and GET /coding ask for every
+// row every few seconds, while a transcript only changes when pi writes.
+type codingEnrichment struct {
+	stats    Stats
+	title    string
+	plan     *PlanCount
+	activity string
+	lastStop string
+	size     int64
+	modTime  time.Time
+}
+
+var (
+	codingCacheMu sync.Mutex
+	codingCache   = map[string]codingEnrichment{}
+	// codingParses counts transcript parses, so a test can assert the cache.
+	codingParses int
+)
+
+func enrichCoding(path string, fi os.FileInfo) (codingEnrichment, bool) {
+	codingCacheMu.Lock()
+	if e, ok := codingCache[path]; ok && e.size == fi.Size() && e.modTime.Equal(fi.ModTime()) {
+		codingCacheMu.Unlock()
+		return e, true
+	}
+	codingCacheMu.Unlock()
+
+	tl, entries, err := LoadTimelineFile(path)
+	if err != nil {
+		return codingEnrichment{}, false
+	}
+	e := codingEnrichment{
+		stats:    ComputeStats(entries, tl),
+		title:    truncate60(firstUserText(tl)),
+		activity: ActivityFromTimeline(tl),
+		size:     fi.Size(),
+		modTime:  fi.ModTime(),
+	}
+	if done, total, ok := PlanProgress(tl); ok {
+		e.plan = &PlanCount{Done: done, Total: total}
+	}
+	if last := lastAssistantItem(tl); last != nil {
+		e.lastStop = last.StopReason
+	}
+	codingCacheMu.Lock()
+	codingCache[path] = e
+	codingParses++
+	codingCacheMu.Unlock()
+	return e, true
+}
+
 // CodingRowFor derives one CodingRow from a session record. A transcript
 // that is missing or fails to load leaves Stats/Activity/Plan/Title at their
 // zero value and State at "idle" (or "ended", if the record already says
@@ -87,25 +156,23 @@ func CodingRowFor(rec SessionRecord, now time.Time) CodingRow {
 	if err != nil {
 		return row
 	}
-	tl, entries, err := LoadTimelineFile(rec.TranscriptPath)
-	if err != nil {
+	e, ok := enrichCoding(rec.TranscriptPath, fi)
+	if !ok {
 		return row
 	}
 
-	row.Stats = ComputeStats(entries, tl)
-	row.Title = truncate60(firstUserText(tl))
-	if done, total, ok := PlanProgress(tl); ok {
-		row.Plan = &PlanCount{Done: done, Total: total}
-	}
+	row.Stats = e.stats
+	row.Title = e.title
+	row.Plan = e.plan
 	if rec.Status == "ended" {
 		return row
 	}
-	row.Activity = ActivityFromTimeline(tl)
+	row.Activity = e.activity
 
 	switch {
 	case now.Sub(fi.ModTime()) <= 10*time.Second:
 		row.State = "working"
-	case lastAssistantItem(tl) != nil && lastAssistantItem(tl).StopReason == "stop":
+	case e.lastStop == "stop":
 		row.State = "waiting"
 	default:
 		row.State = "idle"

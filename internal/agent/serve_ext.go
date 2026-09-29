@@ -181,7 +181,6 @@ func (s *Server) startCodingWatcher() (stop func()) {
 		t := time.NewTicker(codingPoll)
 		defer t.Stop()
 		prev := map[string]CodingSnap{}
-		states := map[string]string{}
 		for {
 			select {
 			case <-done:
@@ -190,12 +189,9 @@ func (s *Server) startCodingWatcher() (stop func()) {
 				if s.hub.clientCount() == 0 {
 					continue
 				}
-				rows, err := CodingRows(time.Now())
+				rows, err := ActiveCodingRows(time.Now())
 				if err != nil {
 					continue
-				}
-				for _, r := range rows {
-					states[r.ID] = r.State
 				}
 				next := SnapshotCoding(rows)
 				for _, id := range ChangedCoding(prev, next) {
@@ -237,25 +233,31 @@ func (s *Server) extendRoutes(mux *http.ServeMux) {
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
+	// Only the live registry's sessions are resolved: the overview is
+	// polled, and listing every transcript here would parse them all.
 	live := []sessionOut{}
-	if metas, err := s.Model.ListTranscripts("", false); err == nil {
-		sched := s.scheduledIndex()
-		for _, m := range metas {
-			if s.liveSession(m.ID) == nil {
-				continue
-			}
-			row := s.sessionRow(m)
-			row.Scheduled = sched[m.ID]
-			live = append(live, row)
-		}
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.sessions))
+	for id := range s.sessions {
+		ids = append(ids, id)
 	}
-	coding := []CodingRow{}
-	if rows, err := CodingRows(now); err == nil {
-		for _, c := range rows {
-			if c.Status == "active" {
-				coding = append(coding, c)
-			}
+	s.mu.Unlock()
+	sched := s.scheduledIndex()
+	for _, id := range ids {
+		dir, jsonlPath, sc, err := s.Model.FindTranscript(id)
+		if err != nil {
+			continue
 		}
+		row := s.sessionRow(TranscriptMeta{ID: id, Title: resolveTitle(sc, jsonlPath), Profile: sc.Profile,
+			Project: s.Model.projectForSessionsDir(dir), Pinned: sc.Pinned,
+			Updated: transcriptUpdated(jsonlPath, sc, sidecarPath(dir, id))})
+		row.Scheduled = sched[id]
+		live = append(live, row)
+	}
+	sort.Slice(live, func(i, k int) bool { return live[i].Updated.After(live[k].Updated) })
+	coding, err := ActiveCodingRows(now)
+	if err != nil || coding == nil {
+		coding = []CodingRow{}
 	}
 	dialogs := 0
 	s.mu.Lock()
